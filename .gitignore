@@ -1,0 +1,29 @@
+# --- Local testing scratch (test LXC credentials/keys) ---
+Azerothcore/.testing/
+Azerothcore/testing-notes.md
+
+# --- Backups and exports ---
+*.bak
+*.bak.*
+*.sql
+*.log
+
+# --- SSH keys ---
+*.pem
+*.key
+id_ed25519
+id_ed25519.pub
+id_rsa
+id_rsa.pub
+
+# --- Claude ---
+.claude/
+*.claude
+CLAUDE.md
+
+# --- OS / editor ---
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
