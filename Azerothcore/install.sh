@@ -23,6 +23,7 @@ set -euo pipefail
 CYAN='\033[0;36m'
 GREEN='\033[0;32m'
 RED='\033[0;31m'
+YELLOW='\033[1;33m'
 NC='\033[0m'
 
 pause() {
@@ -55,6 +56,10 @@ notice() {
     echo -e "${RED}==============================================================================${NC}"
     echo -e "${RED} $1${NC}"
     echo -e "${RED}==============================================================================${NC}"
+}
+
+hint() {
+    echo -e "${YELLOW}$1${NC}"
 }
 
 require_root_or_sudo() {
@@ -212,9 +217,9 @@ EOF
     step "8. Root-Passwort sperren"
     sudo passwd -l root
     print_basic_checklist
-    notice "Hinweis"
-    warn "Das Basissystem ist vorbereitet. Ergänze das System jetzt noch um deine eigenen"
-    warn "Installationen, Dienste und projektspezifischen Anpassungen, bevor du fortfährst."
+    echo ""
+    hint "Das Basissystem ist vorbereitet. Ergänze das System jetzt noch um deine eigenen"
+    hint "Installationen, Dienste und projektspezifischen Anpassungen, bevor du fortfährst."
 }
 
 ################################################################################

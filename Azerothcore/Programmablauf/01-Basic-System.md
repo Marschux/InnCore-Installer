@@ -202,7 +202,7 @@ passwd -l root
 # ==============================================================================
 # 10. Abschluss-Hinweis
 # ==============================================================================
-# Nach der Checkliste erscheint in Rot:
+# Nach der Checkliste erscheinen in Gelb nur die folgenden Hinweiszeilen:
 #
 #   Das Basissystem ist vorbereitet. Ergänze das System jetzt noch um deine
 #   eigenen Installationen, Dienste und projektspezifischen Anpassungen,

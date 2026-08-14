@@ -1,0 +1,50 @@
+cat << 'EOF' | sudo tee -a /etc/mysql/mysql.conf.d/mysqld.cnf
+
+# ==================================================
+# MYSQL PERFORMANCE TUNING - AZEROTHCORE PLAYERBOTS
+# System: 12 cores / 32 GB RAM (wow-Backup-Server, LXC 2098)
+# ==================================================
+
+# InnoDB RAM cache
+innodb_buffer_pool_size = 16G
+innodb_buffer_pool_instances = 8
+innodb_log_buffer_size = 64M
+innodb_redo_log_capacity = 4G
+
+# SSD/NVMe I/O
+innodb_io_capacity = 1000
+innodb_io_capacity_max = 4000
+innodb_lock_wait_timeout = 50
+innodb_deadlock_detect = ON
+
+# Reduces write pressure.
+# Small crash-risk window of about 1 second.
+innodb_flush_log_at_trx_commit = 2
+
+# Helps reduce bot-related deadlocks
+transaction_isolation = READ-COMMITTED
+
+# Disable binary logs if replication is not used
+skip-log-bin
+
+# Temporary tables
+tmp_table_size = 256M
+max_heap_table_size = 256M
+
+# Connections
+max_connections = 300
+thread_cache_size = 100
+
+# Table cache
+table_open_cache = 8192
+table_definition_cache = 4096
+
+# Slow query log
+slow_query_log = 1
+slow_query_log_file = /var/log/mysql/slow.log
+long_query_time = 1
+
+# Keep disabled for now, otherwise this can create a lot of log spam
+log_queries_not_using_indexes = 0
+
+EOF
