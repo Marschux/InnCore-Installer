@@ -5,16 +5,13 @@
 #    ----------------------------------------------------------------------   #
 #    Menu choices:                                                            #
 #      1) Basic System   (see "Guide Basic System.md")                       #
-#      2) Authserver      - build + InnControl scripts (see "2 - Authserver/Guide Authserver.md") #
-#      3) Worldserver     - build + InnControl scripts (see "3 - Worldserver/Guide Worldserver.md") #
-#      4) Bothserver      - Auth + World, one LXC, build + InnControl scripts #
-#      5) Authscript      - ACore InnControl management scripts only (Auth)  #
-#      6) Worldscripts    - ACore InnControl management scripts only (World) #
-#      7) Both Scripts    - ACore InnControl management scripts only, Auth+World #
+#      2) Authserver      - build only (see "2 - Authserver/Guide Authserver.md") #
+#      3) Worldserver     - build only (see "3 - Worldserver/Guide Worldserver.md") #
+#      4) Bothserver      - Auth + World, one LXC, build only #
 #                                                                              #
 #    This script mirrors the guides step for step. It is NOT fully           #
 #    unattended: at points where the guides require a manual decision        #
-#    (DB password, client-data extraction, placing MOTD/dynamic-motd        #
+#    (DB password, client-data extraction, and hardware-specific tuning)     #
 #    files, verifying SSH login) it pauses and asks you to confirm before    #
 #    continuing. Hardware-specific MySQL tuning and the final menu start     #
 #    flow are intentionally NOT part of this script - see install.md.       #
@@ -86,49 +83,116 @@ strip_existing_mysql_tuning() {
 ################################################################################
 # 1. BASIC SYSTEM
 ################################################################################
-run_basic_system() {
-    step "0. Proxmox: LXC autostart + WoW-Bridge network"
-    pause "In the Proxmox web UI: enable 'Start at boot' for this LXC, add the WoW-Bridge (vmbr_wow) network interface with a static 10.20.10.0/24 IP, paste this LXC's 'LXC Notes <Name>.md' HTML block into Summary > Notes, and create a snapshot named 'Fresh_Install', then continue here."
+collect_basic_inputs() {
+    step "1. Vorbereitung und Eingaben"
+    confirm "Ist das Debian-LXC mit deinen eigenen Vorbereitungen und Anpassungen fertig eingerichtet?"
 
-    step "1. System update and base packages, including Fail2Ban"
-    apt update && apt full-upgrade -y
-    apt install -y \
-      sudo \
-      htop \
-      curl \
-      wget \
-      nano \
-      unattended-upgrades \
-      screen \
-      tmux \
-      net-tools \
-      iproute2 \
-      unzip \
-      git \
-      iputils-ping \
-      glances \
-      openssh-server \
-      fail2ban \
-      locales
-
-    timedatectl set-timezone Europe/Berlin
-
-    notice "2. Create and authorize the admin user"
-    if id admin &>/dev/null; then
-        echo "User 'admin' already exists, skipping creation."
-    else
-        adduser admin --gecos ""
+    echo "Bitte die Zeitzone über das folgende Menü auswählen:"
+    SERVER_TIMEZONE="$(tzselect)"
+    if [ -z "$SERVER_TIMEZONE" ]; then
+        warn "Keine Zeitzone ausgewählt."
+        exit 1
     fi
-    usermod -aG sudo admin
 
-    step "3. SSH security: disable root login"
+    while true; do
+        read -rp "Administrationsbenutzer: " ADMIN_USER
+        if [[ "$ADMIN_USER" =~ ^[a-z_][a-z0-9_-]*\$?$ ]]; then break; fi
+        warn "Ungültiger Linux-Benutzername. Verwende Kleinbuchstaben, Zahlen, '_' oder '-'."
+    done
+    while true; do
+        read -rsp "Passwort für '$ADMIN_USER': " ADMIN_PASS; echo ""
+        read -rsp "Passwort wiederholen: " ADMIN_PASS_CONFIRM; echo ""
+        [ "$ADMIN_PASS" = "$ADMIN_PASS_CONFIRM" ] && break
+        warn "Die Passwörter stimmen nicht überein. Bitte erneut eingeben."
+    done
+    unset ADMIN_PASS_CONFIRM
+}
+
+install_motd_template() {
+    sudo tee /usr/local/bin/dynamic-motd.sh > /dev/null << 'EOF'
+#!/usr/bin/env bash
+GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
+USER_NAME=$(whoami); HOST_NAME=$(hostname | tr '[:lower:]' '[:upper:]')
+OS_NAME=$(grep '^PRETTY_NAME=' /etc/os-release | cut -d'"' -f2)
+UPTIME=$(uptime -p | sed 's/up //'); LOAD=$(cut -d' ' -f1-3 /proc/loadavg)
+MEM_USED=$(free -h | awk '/^Mem:/ {print $3}'); MEM_TOTAL=$(free -h | awk '/^Mem:/ {print $2}')
+SWAP_USED=$(free -h | awk '/^Swap:/ {print $3}'); SWAP_TOTAL=$(free -h | awk '/^Swap:/ {print $2}')
+DISK_USED=$(df -h / | awk 'NR==2 {print $3}'); DISK_TOTAL=$(df -h / | awk 'NR==2 {print $2}')
+IP_ADDR=$(hostname -I | awk '{print $1}'); CORES=$(nproc)
+[ "$SWAP_TOTAL" = "0B" ] || [ -z "$SWAP_TOTAL" ] && SWAP_DISPLAY="None" || SWAP_DISPLAY="${SWAP_USED} / ${SWAP_TOTAL}"
+echo; echo -e "  🌐   ${YELLOW}${HOST_NAME}${NC}"; echo -e "${YELLOW}------------------------------------------------------------${NC}"; echo
+echo -e "${GREEN}  👤  User:    ${NC}${USER_NAME}"; echo -e "${GREEN}  🐧  OS:      ${NC}${OS_NAME}"; echo -e "${GREEN}  🔢  IP:      ${NC}${IP_ADDR}"
+echo -e "${GREEN}  🕒  Uptime:  ${NC}${UPTIME}"; echo -e "${GREEN}  🧠  Cores:   ${NC}${CORES}"; echo -e "${GREEN}  📊  Load:    ${NC}${LOAD}"
+echo -e "${GREEN}  💾  Memory:  ${NC}${MEM_USED} / ${MEM_TOTAL}"; echo -e "${GREEN}  🔄  Swap:    ${NC}${SWAP_DISPLAY}"; echo -e "${GREEN}  💽  Disk:    ${NC}${DISK_USED} / ${DISK_TOTAL}"; echo
+EOF
+    sudo chmod +x /usr/local/bin/dynamic-motd.sh
+    sudo tee /etc/profile.d/dynamic-motd.sh > /dev/null << 'EOF'
+#!/usr/bin/env bash
+[ -x /usr/local/bin/dynamic-motd.sh ] && /usr/local/bin/dynamic-motd.sh
+EOF
+    sudo chmod +x /etc/profile.d/dynamic-motd.sh
+    sudo truncate -s 0 /etc/motd
+}
+
+ensure_hostname_resolution() {
+    local CURRENT_HOSTNAME
+    CURRENT_HOSTNAME="$(hostname)"
+    if ! awk -v hostname="$CURRENT_HOSTNAME" \
+        '$1 ~ /^127\./ { for (i = 2; i <= NF; i++) if ($i == hostname) found = 1 } END { exit !found }' \
+        /etc/hosts; then
+        printf '127.0.1.1\t%s\n' "$CURRENT_HOSTNAME" >> /etc/hosts
+        echo "Hostname '$CURRENT_HOSTNAME' in /etc/hosts ergänzt."
+    fi
+}
+
+print_basic_checklist() {
+    step "Abschluss-Checkliste"
+    echo "[x] Allgemeine Vorbereitung des LXC bestätigt"
+    echo "[x] System aktualisiert und Basiswerkzeuge installiert"
+    echo "[x] Lokale Hostname-Auflösung geprüft"
+    echo "[x] Zeitzone auf '$SERVER_TIMEZONE' gesetzt"
+    echo "[x] Administrationskonto '$ADMIN_USER' eingerichtet und für sudo autorisiert"
+    echo "[x] Dynamisches MOTD-Template installiert"
+    echo "[x] SSH aktiviert und Root-Login per SSH deaktiviert"
+    echo "[x] Fail2Ban für SSH aktiviert"
+    echo "[x] SSH- und sudo-Zugang bestätigt"
+    echo "[x] Root-Passwort gesperrt"
+}
+
+run_basic_system() {
+    collect_basic_inputs
+    step "2. Debian-Grundsystem"
+    apt update && apt full-upgrade -y
+    apt install -y sudo htop curl wget nano unattended-upgrades screen tmux net-tools iproute2 unzip git iputils-ping glances openssh-server fail2ban locales
+
+    ensure_hostname_resolution
+
+    if ! timedatectl list-timezones | grep -Fxq "$SERVER_TIMEZONE"; then
+        warn "Unbekannte Zeitzone: $SERVER_TIMEZONE"; exit 1
+    fi
+    timedatectl set-timezone "$SERVER_TIMEZONE"
+    step "3. Administrationskonto einrichten"
+    echo "Das Administrationskonto wird angelegt beziehungsweise aktualisiert"
+    echo "und für die Verwendung von sudo freigeschaltet."
+    echo "Verwendeter Account: $ADMIN_USER"
+    id "$ADMIN_USER" &>/dev/null || useradd --create-home --shell /bin/bash "$ADMIN_USER"
+    printf '%s:%s\n' "$ADMIN_USER" "$ADMIN_PASS" | chpasswd
+    unset ADMIN_PASS
+    usermod -aG sudo "$ADMIN_USER"
+
+    step "4. Dynamisches MOTD"
+    install_motd_template
+    echo "Das MOTD-Template wurde installiert."
+    echo ""
+    echo "Testausgabe des MOTD:"
+    /usr/local/bin/dynamic-motd.sh
+
+    step "5. SSH absichern"
     sed -i 's/^#PermitRootLogin.*/PermitRootLogin no/' /etc/ssh/sshd_config
     sed -i 's/^PermitRootLogin.*/PermitRootLogin no/' /etc/ssh/sshd_config
+    systemctl enable ssh; systemctl restart ssh
 
-    systemctl enable ssh
-    systemctl restart ssh
-
-    step "4. Configure Fail2Ban for SSH"
+    step "6. Fail2Ban für SSH konfigurieren"
     cat << 'EOF' > /etc/fail2ban/jail.d/ssh.local
 [sshd]
 enabled  = true
@@ -138,37 +202,19 @@ maxretry = 5
 bantime  = 600
 findtime = 600
 EOF
+    systemctl enable fail2ban; systemctl restart fail2ban; sleep 2; fail2ban-client status
 
-    systemctl enable fail2ban
-    systemctl restart fail2ban
-    sleep 2
-    fail2ban-client status
+    step "7. Zugang testen"
+    echo "Öffne ein NEUES Terminal und teste die SSH-Anmeldung als '$ADMIN_USER'."
+    echo "Prüfe außerdem, ob 'sudo -i' funktioniert."
+    pause "Erst nach erfolgreichem SSH- und sudo-Test fortfahren."
 
-    notice "5. Appearance and comfort for root and admin"
-    echo "Adjust container name/color/icon in Proxmox now."
-    echo "Paste the 'sudo tee ... EOF' block from this LXC's 'MOTD <Name>.md' below, then type 'exit' to continue."
-    bash
-    cat /dev/null > /etc/motd
-    chmod +x /usr/local/bin/dynamic-motd.sh
-    echo "/usr/local/bin/dynamic-motd.sh" >> ~/.bashrc
-    echo "/usr/local/bin/dynamic-motd.sh" >> /home/admin/.bashrc
-
-    notice "6. Install Patchmon bot"
-    echo "Paste/run the Patchmon install command below (if desired), then type 'exit' to continue."
-    bash
-
-    notice "7. Final step: lock root password"
-    echo "Setup is almost finished."
-    echo "Before locking root: test SSH login as 'admin' in a NEW terminal window."
-    echo "Verify that 'sudo -i' works as admin."
-    pause "Only continue once the admin login and sudo -i are confirmed."
-
-    passwd -l root
-    echo ""
-    echo "Root password locked."
-
-    notice "8. Log in again as admin"
-    echo "Log in again as 'admin' now and update LXC Notes."
+    step "8. Root-Passwort sperren"
+    sudo passwd -l root
+    print_basic_checklist
+    notice "Hinweis"
+    warn "Das Basissystem ist vorbereitet. Ergänze das System jetzt noch um deine eigenen"
+    warn "Installationen, Dienste und projektspezifischen Anpassungen, bevor du fortfährst."
 }
 
 ################################################################################
@@ -249,31 +295,9 @@ FLUSH PRIVILEGES;
 EOF
     unset DB_PASS
 
-    notice "11. Install management scripts"
-    run_authscript
-
-    notice "12. Final start"
-    echo "Run 'source ~/.bashrc' (or re-login) so the 'authmenu' alias is active."
-    echo "The 'authmenu' start flow is not part of this script - see install.md."
-}
-
-################################################################################
-# 5. AUTHSCRIPT (management scripts only)
-################################################################################
-run_authscript() {
-    notice "Install management scripts (Authserver)"
-    echo "ACore InnControl (separate repo) will be cloned to /tmp/acore-inncontrol and installed."
-    rm -rf /tmp/acore-inncontrol
-    git clone https://gitlab.com/grassnotfound/acore-inncontrol.git /tmp/acore-inncontrol
-    # Only prefix with sudo if we're not root yet - a nested sudo call while
-    # already root resets SUDO_USER to "root", breaking InnControl's
-    # alias/ownership default for the actual admin user.
-    if [ "$EUID" -eq 0 ]; then
-        bash /tmp/acore-inncontrol/install.sh auth
-    else
-        sudo bash /tmp/acore-inncontrol/install.sh auth
-    fi
-    echo "Set the DB password for the 'acore' MySQL user in values_auth.conf's LoginDatabaseInfo."
+    notice "11. Final step"
+    echo "The Authserver build and database setup are complete."
+    echo "Management scripts and the final 'authmenu' start flow are handled separately."
 }
 
 ################################################################################
@@ -369,32 +393,9 @@ FLUSH PRIVILEGES;
 EOF
     unset DB_PASS
 
-    notice "12. Install management scripts"
-    run_worldscript
-
-    notice "13. Final start"
-    echo "Run 'source ~/.bashrc' (or re-login) so the 'worldmenu' alias is active."
-    echo "The 'worldmenu' start flow is not part of this script - see install.md."
-}
-
-################################################################################
-# 6. WORLDSCRIPTS (management scripts only)
-################################################################################
-run_worldscript() {
-    notice "Install management scripts (Worldserver)"
-    echo "ACore InnControl (separate repo) will be cloned to /tmp/acore-inncontrol and installed."
-    rm -rf /tmp/acore-inncontrol
-    git clone https://gitlab.com/grassnotfound/acore-inncontrol.git /tmp/acore-inncontrol
-    # Only prefix with sudo if we're not root yet - a nested sudo call while
-    # already root resets SUDO_USER to "root", breaking InnControl's
-    # alias/ownership default for the actual admin user.
-    if [ "$EUID" -eq 0 ]; then
-        bash /tmp/acore-inncontrol/install.sh world
-    else
-        sudo bash /tmp/acore-inncontrol/install.sh world
-    fi
-    echo "Set the DB password for the 'acore' MySQL user in values_world.conf's LoginDatabaseInfo/WorldDatabaseInfo/CharacterDatabaseInfo"
-    echo "and in values_playerbots.conf's PlayerbotsDatabaseInfo."
+    notice "12. Final step"
+    echo "The Worldserver build and database setup are complete."
+    echo "Management scripts and the final 'worldmenu' start flow are handled separately."
 }
 
 ################################################################################
@@ -407,114 +408,6 @@ run_bothserver() {
     run_worldserver
 }
 
-################################################################################
-# 7. BOTH SCRIPTS (Auth + World management scripts on one LXC)
-################################################################################
-run_bothscripts() {
-    step "Both Scripts: Authscript"
-    run_authscript
-    step "Both Scripts: Worldscripts"
-    run_worldscript
-}
-
-################################################################################
-# 8. UPDATE (this repo + InnControl management scripts)
-################################################################################
-run_update() {
-    step "Update Installscript repo"
-    local REPO_ROOT
-    REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-    git -C "$REPO_ROOT" pull
-
-    echo ""
-    echo "Also update management scripts (InnControl) for:"
-    echo "  [1] auth"
-    echo "  [2] world"
-    echo "  [3] both"
-    echo "  [4] skip"
-    read -rp "Select an option [1-4]: " ROLE_SELECTION
-    case "$ROLE_SELECTION" in
-        1) run_authscript ;;
-        2) run_worldscript ;;
-        3) run_bothscripts ;;
-        4|"") warn "Skipped InnControl update." ;;
-        *) warn "Invalid choice, skipped InnControl update." ;;
-    esac
-}
-
-################################################################################
-# 9. DELETE (management scripts)
-################################################################################
-delete_role() {
-    local ROLE="$1"
-    local DEST_DIR="/opt/control-$ROLE"
-    read -rp "Path of the '$ROLE' management scripts to delete [$DEST_DIR]: " DEST_DIR_INPUT
-    DEST_DIR="${DEST_DIR_INPUT:-$DEST_DIR}"
-
-    if [ ! -d "$DEST_DIR" ]; then
-        warn "$DEST_DIR does not exist, nothing to delete."
-        return 0
-    fi
-
-    confirm "This permanently deletes $DEST_DIR (scripts + config, including DB passwords), /etc/sudoers.d/acorecontrol-$ROLE, and the '$ROLE' alias block in ~/.bashrc."
-
-    sudo rm -rf "$DEST_DIR"
-    sudo rm -f "/etc/sudoers.d/acorecontrol-$ROLE"
-
-    read -rp "Bashrc of which user should the '$ROLE' alias block be removed from? [${SUDO_USER:-$(whoami)}]: " ALIAS_USER
-    ALIAS_USER="${ALIAS_USER:-${SUDO_USER:-$(whoami)}}"
-    local USER_HOME
-    USER_HOME="$(getent passwd "$ALIAS_USER" | cut -d: -f6)"
-    if [ -n "$USER_HOME" ] && [ -f "$USER_HOME/.bashrc" ]; then
-        local BEGIN_MARKER="# >>> acorecontrol-$ROLE aliases (managed by install.sh) >>>"
-        local END_MARKER="# <<< acorecontrol-$ROLE aliases <<<"
-        local STRIPPED
-        STRIPPED="$(mktemp)"
-        awk -v b="$BEGIN_MARKER" -v e="$END_MARKER" '
-            $0==b {skip=1; next}
-            $0==e {skip=0; next}
-            skip!=1 {print}
-        ' "$USER_HOME/.bashrc" > "$STRIPPED"
-        sudo cp "$STRIPPED" "$USER_HOME/.bashrc"
-        rm -f "$STRIPPED"
-        echo "Alias block removed from $USER_HOME/.bashrc."
-    fi
-
-    echo "Deleted '$ROLE' management scripts."
-}
-
-delete_installscript() {
-    local SCRIPT_PATH
-    SCRIPT_PATH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
-
-    warn "This permanently deletes $SCRIPT_PATH itself (just this file - guides/templates in this checkout are left in place), plus a leftover /tmp/acore-inncontrol clone if one exists from an interrupted run."
-    confirm "Type 'yes' to confirm when ready."
-
-    if [ -d /tmp/acore-inncontrol ]; then
-        rm -rf /tmp/acore-inncontrol
-        echo "Removed leftover /tmp/acore-inncontrol clone."
-    fi
-
-    rm -f "$SCRIPT_PATH"
-    echo -e "${GREEN}Removed $SCRIPT_PATH.${NC}"
-    exit 0
-}
-
-run_delete() {
-    echo "Delete management scripts for:"
-    echo "  [1] auth"
-    echo "  [2] world"
-    echo "  [3] both"
-    echo "  [4] this install.sh (+ any leftover /tmp/acore-inncontrol clone)"
-    read -rp "Select an option [1-4]: " ROLE_SELECTION
-    case "$ROLE_SELECTION" in
-        1) delete_role "auth" ;;
-        2) delete_role "world" ;;
-        3) delete_role "auth"; delete_role "world" ;;
-        4) delete_installscript ;;
-        *) warn "Invalid choice."; exit 1 ;;
-    esac
-}
 
 ################################################################################
 # MAIN MENU
@@ -528,28 +421,21 @@ main() {
     echo -e "${CYAN}#  AZEROTHCORE - COMBINED INSTALL SCRIPT                                      #${NC}"
     echo -e "${CYAN}################################################################################${NC}"
     echo ""
-    echo "  1) Basic System   (Debian base setup, security, Fail2Ban)"
-    echo "  2) Authserver     (Auth & MySQL 8.4 database server - build + InnControl scripts)"
-    echo "  3) Worldserver    (Worldserver incl. Playerbots - build + InnControl scripts)"
-    echo "  4) Bothserver     (Authserver + Worldserver on this LXC - build + InnControl scripts)"
-    echo "  5) Authscript     (ACore InnControl management scripts for Authserver)"
-    echo "  6) Worldscripts   (ACore InnControl management scripts for Worldserver)"
-    echo "  7) Both Scripts   (ACore InnControl management scripts, Auth + World)"
-    echo "  8) Update         (git pull this repo + optionally update InnControl)"
-    echo "  9) Delete         (remove installed management scripts, or this install.sh itself)"
+    echo "  1) 🧱 Basic System   (Debian base setup, security, Fail2Ban)"
+    echo "  2) 🔐 Authserver     (Auth & MySQL 8.4 database server - build only)"
+    echo "  3) 🌍 Worldserver    (Worldserver incl. Playerbots - build only)"
+    echo "  4) 🔗 Bothserver     (Authserver + Worldserver on this LXC - build only)"
     echo ""
-    read -rp "Choice [1-9]: " choice
+    warn "Hinweis: Installpunkt 1 (Basic System) muss zuerst abgeschlossen werden."
+    warn "Die Punkte 2, 3 und 4 setzen das vorbereitete Basissystem voraus."
+    echo ""
+    read -rp "Choice [1-4]: " choice
 
     case "$choice" in
         1) run_basic_system ;;
         2) run_authserver ;;
         3) run_worldserver ;;
         4) run_bothserver ;;
-        5) run_authscript ;;
-        6) run_worldscript ;;
-        7) run_bothscripts ;;
-        8) run_update ;;
-        9) run_delete ;;
         *) warn "Invalid choice."; exit 1 ;;
     esac
 

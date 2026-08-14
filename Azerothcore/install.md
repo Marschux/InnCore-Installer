@@ -4,15 +4,10 @@ Mirrors the guides in this repo step by step, with a menu:
 
 | Choice | Installation | Guide / Repo |
 |------|--------------|--------------|
-| 1 | Basic System | `1 - defaultfiles/Guide Basic System.md` |
-| 2 | Authserver | `2 - Authserver/Guide Authserver.md` - build + InnControl scripts |
-| 3 | Worldserver | `3 - Worldserver/Guide Worldserver.md` - build + InnControl scripts |
-| 4 | Bothserver | Auth + World in sequence, one LXC - build + InnControl scripts |
-| 5 | Authscript | [ACore InnControl](https://gitlab.com/grassnotfound/acore-inncontrol) - Auth only, scripts only |
-| 6 | Worldscripts | [ACore InnControl](https://gitlab.com/grassnotfound/acore-inncontrol) - World only, scripts only |
-| 7 | Both Scripts | [ACore InnControl](https://gitlab.com/grassnotfound/acore-inncontrol) - Auth + World, scripts only |
-| 8 | Update | git pull this repo + optionally update InnControl |
-| 9 | Delete | remove installed management scripts, or this install.sh itself |
+| 1 | Basic System | [`Programmablauf/01-Basic-System.md`](Programmablauf/01-Basic-System.md) |
+| 2 | Authserver | `2 - Authserver/Guide Authserver.md` - build only |
+| 3 | Worldserver | `3 - Worldserver/Guide Worldserver.md` - build only |
+| 4 | Bothserver | Auth + World in sequence, one LXC - build only |
 
 ## Usage
 
@@ -39,7 +34,11 @@ cd /opt/wow-privatserver-installscript/Azerothcore
 
 - Fresh Debian 13 LXC, root or passwordless `sudo`
 - 2/3/4 require Basic System (1) to have run first
-- 5/6/7 require the matching build (2/3/4) to have run first
+- Installpunkt 1 fragt die Grunddaten am Anfang ab und richtet danach das
+  Debian-Basissystem, den Administrator, das dynamische MOTD, SSH und Fail2Ban
+  ein.
+- Eigene Installationen, Dienste und projektspezifische Anpassungen werden
+  bewusst nicht vorgegeben und müssen nach dem Basissystem ergänzt werden.
 
 
 ## Intentionally not part of the script
