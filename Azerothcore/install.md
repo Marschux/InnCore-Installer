@@ -18,17 +18,15 @@ Basic System installed it):
 #### First Time
 ```bash
 apt update && apt install -y git
-cd /opt
-git clone https://gitlab.com/grassnotfound/wow-privatserver-installscript.git azerothcore-installscript
-cd azerothcore-installscript
-cd Azerothcore
+git clone git@gitlab.com:grassnotfound/WoW-Privatserver-Installscript.git /opt/wowserver-install
+cd /opt/wowserver-install/Azerothcore
 chmod +x install.sh
 ./install.sh
 ```
 
 #### Reopen
 ```
-cd /opt/azerothcore-installscript/Azerothcore
+cd /opt/wowserver-install/Azerothcore
 ./install.sh
 ```
 
