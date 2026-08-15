@@ -7,7 +7,8 @@ Mirrors the guides in this repo step by step, with a menu:
 | 1 | Basic System | [`Programmablauf/01-Basic-System.md`](Programmablauf/01-Basic-System.md) |
 | 2 | Authserver | `2 - Authserver/Guide Authserver.md` - build only |
 | 3 | Worldserver | `3 - Worldserver/Guide Worldserver.md` - build only |
-| 4 | Bothserver | Auth + World in sequence, one LXC - build only |
+| 4 | Bothserver | Auth + World auf einer gemeinsamen LXC - optional |
+| 5 | Control | Eigene Verwaltungsmenüs für Auth- und Worldserver |
 
 ## Usage
 
@@ -18,15 +19,16 @@ Basic System installed it):
 ```bash
 apt update && apt install -y git
 cd /opt
-git clone https://gitlab.com/grassnotfound/wow-privatserver-installscript.git
-cd wow-privatserver-installscript/Azerothcore
+git clone https://gitlab.com/grassnotfound/wow-privatserver-installscript.git azerothcore-installscript
+cd azerothcore-installscript
+cd Azerothcore
 chmod +x install.sh
 ./install.sh
 ```
 
 #### Reopen
 ```
-cd /opt/wow-privatserver-installscript/Azerothcore
+cd /opt/azerothcore-installscript/Azerothcore
 ./install.sh
 ```
 
@@ -68,6 +70,10 @@ cd /opt/wow-privatserver-installscript/Azerothcore
 
 `worldmenu`:
 ```
+
+Die Control-Installation wird nach den Installationspunkten 2, 3 und 4 am
+Ende optional angeboten. Menüpunkt 5 bleibt als nachträgliche Möglichkeit
+erhalten.
 12       Pull Git updates
 12       Build worldserver
 12       Clean build directory

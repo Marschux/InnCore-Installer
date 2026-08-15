@@ -1,12 +1,13 @@
 # WoW Privatserver Installscript
 
-Install scripts for WoW private server cores, one subfolder per core.
+Install scripts for WoW private server cores.
 
 Currently covers:
 
 - [`Azerothcore/`](Azerothcore/) - combined install script for AzerothCore WotLK (Authserver/Worldserver/Bothserver), see `Azerothcore/install.md`
 
-Structured per-core so other cores (e.g. TrinityCore, CMaNGOS) can be added as sibling folders later without touching the AzerothCore install.
+Die Control-Menüs gehören direkt zur AzerothCore-Installation und liegen unter
+`Azerothcore/Control/`.
 
 ## Verwendung
 
@@ -16,11 +17,14 @@ sollten vorher abgeschlossen sein.
 
 ### Erstmalige Installation
 
+Das Repository wird direkt in den vorgesehenen Installationsordner geklont.
+
 ```bash
 apt update && apt install -y git
 cd /opt
-git clone https://gitlab.com/grassnotfound/wow-privatserver-installscript.git
-cd wow-privatserver-installscript/Azerothcore
+git clone https://gitlab.com/grassnotfound/wow-privatserver-installscript.git azerothcore-installscript
+cd azerothcore-installscript
+cd Azerothcore
 chmod +x install.sh
 ./install.sh
 ```
@@ -42,13 +46,18 @@ Administrationskonto und `sudo -i` in einem zweiten Terminal getestet werden.
 ### Script erneut öffnen
 
 ```bash
-cd /opt/wow-privatserver-installscript/Azerothcore
+cd /opt/azerothcore-installscript/Azerothcore
 ./install.sh
 ```
 
-Nach dem Basic System können die weiteren Menüpunkte für Authserver,
-Worldserver oder Bothserver ausgeführt werden. Eigene Installationen, Dienste
-und projektspezifische Anpassungen müssen nach dem Basissystem ergänzt werden.
+Nach dem Basic System können die weiteren Menüpunkte für Authserver oder
+Worldserver ausgeführt werden. Bothserver ist nur erforderlich, wenn Auth- und
+Worldserver auf derselben LXC betrieben werden sollen. Die Control-Menüs können am Ende
+der jeweiligen Serverinstallation optional eingerichtet oder später über
+Menüpunkt 5 installiert werden.
+
+Eigene Installationen, Dienste und projektspezifische Anpassungen müssen nach
+dem Basissystem ergänzt werden.
 
 Die detaillierte Übersicht befindet sich in
 [`Azerothcore/install.md`](Azerothcore/install.md).
