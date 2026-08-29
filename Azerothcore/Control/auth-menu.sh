@@ -50,9 +50,10 @@ ExecStart=$AUTH_MENU start
 ExecStop=$AUTH_MENU stop
 RemainAfterExit=yes
 KillMode=mixed
-# worldserver/authserver try to raise their scheduler priority; without this
-# they log "Can't set process priority class" (harmless, but noisy).
-AmbientCapabilities=CAP_SYS_NICE
+# Modest priority boost on a clean boot (a tmux server already up on the
+# socket keeps its own nice). The server's own ProcessPriority is off in
+# values_world.conf so it no longer logs a failed setpriority().
+Nice=-5
 TimeoutStopSec=120
 
 [Install]
