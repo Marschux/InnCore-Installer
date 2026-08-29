@@ -106,6 +106,36 @@ realm_menu() {
     done
 }
 
+apply_auth_values() {
+    apply_values "$SCRIPT_DIR/values_auth.conf" "$AUTH_CONF" || return 1
+    echo ""
+    read -rp "Restart authserver now to load the changes? [y/N]: " r
+    case "$r" in y|Y|j|J) restart_auth ;; *) echo "Not restarted - changes apply on next restart." ;; esac
+}
+
+config_menu() {
+    while true; do
+        clear
+        echo -e "${COLOR_CONFIG}${BOLD}📝  CONFIG & MAINTENANCE${RESET}"
+        echo "----------------------------------------------------------------------------"
+        echo -e "  ${COLOR_CONFIG}[1]${RESET}  Edit values_auth.conf (summary)"
+        echo -e "  ${COLOR_CONFIG}[2]${RESET}  Apply values_auth.conf -> authserver.conf"
+        echo -e "  ${COLOR_CONFIG}[3]${RESET}  Edit authserver.conf (raw)"
+        echo -e "  ${COLOR_CONFIG}[4]${RESET}  Update Control scripts"
+        echo -e "  ${COLOR_CONFIG}[0]${RESET}  Back"
+        echo "----------------------------------------------------------------------------"
+        read -rp "🔹  Choice [0-4]: " choice
+        case "$choice" in
+            1) "${EDITOR:-nano}" "$SCRIPT_DIR/values_auth.conf" ;;
+            2) run_step apply_auth_values ;;
+            3) "${EDITOR:-nano}" "$AUTH_CONF" ;;
+            4) run_step update_control ;;
+            0) return ;;
+            *) echo "Invalid option."; sleep 1 ;;
+        esac
+    done
+}
+
 build_menu() {
     while true; do
         clear
@@ -147,7 +177,7 @@ render_menu() {
     echo -e "  ${COLOR_TOOLS}[9]${RESET}  👤  Account management    ${COLOR_TOOLS}[10]${RESET} 🌍  Realm management"
 
     menu_section "$COLOR_CONFIG" "📝  CONFIG & MAINTENANCE"
-    echo -e "  ${COLOR_CONFIG}[11]${RESET} ✏️  Edit authserver.conf  ${COLOR_CONFIG}[12]${RESET} 🔄  Update Control scripts"
+    echo -e "  ${COLOR_CONFIG}[11]${RESET} 📝  Config & Control scripts"
 
     menu_section "$COLOR_EXIT" "⏻  EXIT"
     echo -e "  ${COLOR_EXIT}[0]${RESET}  🚪  Exit menu"
@@ -160,7 +190,7 @@ menu() {
     while true; do
         draw_menu render_menu
         echo ""
-        read -t 60 -rp "🔹  Select an option (0-12): " choice; rc=$?
+        read -t 60 -rp "🔹  Select an option (0-11): " choice; rc=$?
         [ "$rc" -gt 128 ] && continue
         case "$choice" in
             1) run_step start_auth ;;
@@ -173,8 +203,7 @@ menu() {
             8) build_menu ;;
             9) account_menu ;;
             10) realm_menu ;;
-            11) "${EDITOR:-nano}" "$AUTH_CONF" ;;
-            12) run_step update_control ;;
+            11) config_menu ;;
             0) clear; echo -e "${GREEN}👋  Authserver menu closed.${RESET}"; exit 0 ;;
             *) echo "Invalid option."; sleep 1 ;;
         esac

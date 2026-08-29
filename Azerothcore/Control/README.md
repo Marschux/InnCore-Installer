@@ -8,11 +8,21 @@ InnControl or any other repository.
 
 ```text
 Control/
-├── common.sh          shared helpers (palette, status, server control)
-├── auth-menu.sh       authmenu
-├── world-menu.sh      worldmenu
-└── clean-build.sh     build-dir cleaner
+├── common.sh                shared helpers (palette, status, server control, apply_values)
+├── auth-menu.sh             authmenu
+├── world-menu.sh            worldmenu
+├── clean-build.sh           build-dir cleaner
+├── values_auth.conf         curated authserver.conf summary
+├── values_world.conf        curated worldserver.conf summary
+└── values_playerbots.conf   curated playerbots.conf summary
 ```
+
+The `values_*.conf` files are curated summaries of the real configs. Edit one
+in the menu, then "Apply" it: every key that already exists in the target
+config is written there in place (with a timestamped backup); unknown keys are
+skipped. They are copied on install and never overwritten by "Update Control
+scripts", so operator edits survive. The world menu also has "Edit any .conf"
+which lists `worldserver.conf` plus every module conf for plugins added later.
 
 The Control scripts are installed separately from the AzerothCore source and
 build files. The build cleaner may only clean the exact path

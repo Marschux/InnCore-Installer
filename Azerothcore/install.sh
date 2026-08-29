@@ -112,8 +112,13 @@ install_control_role() {
     sudo install -m 0755 "$src/common.sh" "$target/common.sh"
     sudo install -m 0755 "$src/clean-build.sh" "$target/clean-build.sh"
 
+    # keep_values: copy a values summary only if it is not there yet, so a
+    # re-install / "Update Control scripts" never overwrites the operator's edits.
+    keep_values() { [ -f "$target/$1" ] || sudo install -o "$owner" -g "$owner" -m 0644 "$src/$1" "$target/$1"; }
+
     if [ "$role" = auth ]; then
         sudo install -m 0755 "$src/auth-menu.sh" "$target/auth-menu.sh"
+        keep_values values_auth.conf
         menu="$target/auth-menu.sh"
         sudo tee "$target/control.conf" >/dev/null <<EOF
 ACORE_DIR='$acore'
@@ -133,6 +138,8 @@ EOF
         sudo chmod 0755 /usr/local/bin/authmenu
     else
         sudo install -m 0755 "$src/world-menu.sh" "$target/world-menu.sh"
+        keep_values values_world.conf
+        keep_values values_playerbots.conf
         menu="$target/world-menu.sh"
         sudo tee "$target/control.conf" >/dev/null <<EOF
 ACORE_DIR='$acore'
@@ -147,8 +154,6 @@ WORLD_SESSION='world-session'
 WORLD_SERVICE_NAME='azerothcore-world.service'
 WORLD_TIMER_NAME='azerothcore-world-restart.timer'
 EOF
-        sudo install -o "$owner" -g "$owner" -m 0644 /dev/null "$target/worldserver.overrides.conf"
-        sudo install -o "$owner" -g "$owner" -m 0644 /dev/null "$target/playerbots.overrides.conf"
         sudo tee /usr/local/bin/worldmenu >/dev/null <<EOF
 #!/usr/bin/env bash
 exec '$menu' "\$@"

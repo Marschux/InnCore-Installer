@@ -228,3 +228,49 @@ safe_build() {
     require_path "$dir" || return 1
     run_as_owner bash -c "cd '$dir' && make -j \"\$(nproc)\" && make install"
 }
+
+# Apply a flat "key = value" summary into a real .conf: every key that already
+# exists in the target is replaced in place, unknown keys are reported and
+# skipped. A timestamped backup of the target is written first.
+apply_values() {
+    local values="$1" target="$2" backup key value ek ev
+    require_path "$values" || return 1
+    require_path "$target" || return 1
+
+    backup="${target}.bak.$(date +%Y%m%d-%H%M%S)"
+    cp "$target" "$backup" || { echo "Backup failed."; return 1; }
+    echo -e "${DIM}Backup: $backup${RESET}"
+    echo ""
+
+    while IFS='=' read -r key value || [ -n "$key" ]; do
+        key="$(echo "$key" | xargs 2>/dev/null)"
+        [[ -z "$key" || "$key" == \#* ]] && continue
+        value="$(echo "$value" | cut -d'#' -f1 | xargs | sed 's/^"//;s/"$//')"
+        ek="$(printf '%s' "$key"   | sed 's/[][\\/.^$*+?{}|()]/\\&/g')"
+        ev="$(printf '%s' "$value" | sed 's/[\\/&]/\\&/g')"
+        if grep -qE "^${ek}[[:space:]]*=" "$target"; then
+            if [[ "$value" =~ [[:space:]\;] || ! "$value" =~ ^[0-9]+$ ]]; then
+                sed -i -E "s@^${ek}[[:space:]]*=.*@${key} = \"${ev}\"@" "$target"
+            else
+                sed -i -E "s@^${ek}[[:space:]]*=.*@${key} = ${ev}@" "$target"
+            fi
+            echo -e "  ${GREEN}✓${RESET} $key = $value"
+        else
+            echo -e "  ${YELLOW}– skipped (not in target):${RESET} $key"
+        fi
+    done < <(sed 's/\r$//' "$values")
+    echo ""
+    echo -e "${GREEN}$target updated.${RESET}"
+}
+
+# Pick and edit any .conf under the AzerothCore etc tree (worldserver.conf plus
+# every module conf) - covers plugins added later that ship their own conf.
+edit_any_conf() {
+    local dir="$ACORE_DIR/env/dist/etc" files sel i=1 f
+    mapfile -t files < <(find "$dir" -maxdepth 2 -name '*.conf' ! -name '*.conf.dist' 2>/dev/null | sort)
+    [ "${#files[@]}" -gt 0 ] || { echo "No .conf files found under $dir"; return 1; }
+    for f in "${files[@]}"; do printf '  %2d) %s\n' "$i" "${f#"$dir"/}"; i=$((i + 1)); done
+    read -rp "Choice [1-${#files[@]}]: " sel
+    [[ "$sel" =~ ^[0-9]+$ ]] && [ "$sel" -ge 1 ] && [ "$sel" -le "${#files[@]}" ] || { echo "Invalid choice."; return 1; }
+    "${EDITOR:-nano}" "${files[$((sel - 1))]}"
+}

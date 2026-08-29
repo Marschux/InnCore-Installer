@@ -109,20 +109,18 @@ delete_account() {
     [ "$confirm" = DELETE ] && mysql_auth -e "DELETE FROM account WHERE id=$id; DELETE FROM account_access WHERE id=$id;" && echo "Account deleted."
 }
 
-patch_file() {
-    local file="$1" overrides="$2" label="$3" stamp
-    require_path "$file" || return 1
-    require_path "$overrides" || return 1
-    "${EDITOR:-nano}" "$overrides"
-    stamp="$(date +%Y%m%d%H%M%S)"
-    cp "$file" "$file.bak.$stamp"
-    sed -i '/^# CONTROL PATCH BEGIN$/,/^# CONTROL PATCH END$/d' "$file"
-    {
-        echo '# CONTROL PATCH BEGIN'
-        awk '/^[[:space:]]*[A-Za-z0-9_.-]+[[:space:]]*=/{print}' "$overrides"
-        echo '# CONTROL PATCH END'
-    } >> "$file"
-    echo "$label updated. Backup: $file.bak.$stamp"
+apply_world_values() {
+    apply_values "$SCRIPT_DIR/values_world.conf" "$WORLD_CONF" || return 1
+    echo ""
+    read -rp "Restart worldserver now to load the changes? [y/N]: " r
+    case "$r" in y|Y|j|J) restart_world ;; *) echo "Not restarted - changes apply on next restart." ;; esac
+}
+
+apply_playerbots_values() {
+    apply_values "$SCRIPT_DIR/values_playerbots.conf" "$PLAYERBOTS_CONF" || return 1
+    echo ""
+    read -rp "Restart worldserver now to load the changes? [y/N]: " r
+    case "$r" in y|Y|j|J) restart_world ;; *) echo "Not restarted - changes apply on next restart." ;; esac
 }
 
 build_menu() {
@@ -151,16 +149,22 @@ config_menu() {
         clear
         echo -e "${COLOR_CONFIG}${BOLD}📝  CONFIG & MAINTENANCE${RESET}"
         echo "----------------------------------------------------------------------------"
-        echo -e "  ${COLOR_CONFIG}[1]${RESET}  Patch worldserver.conf"
-        echo -e "  ${COLOR_CONFIG}[2]${RESET}  Patch playerbots.conf"
-        echo -e "  ${COLOR_CONFIG}[3]${RESET}  Update Control scripts"
+        echo -e "  ${COLOR_CONFIG}[1]${RESET}  Edit values_world.conf (summary)"
+        echo -e "  ${COLOR_CONFIG}[2]${RESET}  Apply values_world.conf -> worldserver.conf"
+        echo -e "  ${COLOR_CONFIG}[3]${RESET}  Edit values_playerbots.conf (summary)"
+        echo -e "  ${COLOR_CONFIG}[4]${RESET}  Apply values_playerbots.conf -> playerbots.conf"
+        echo -e "  ${COLOR_CONFIG}[5]${RESET}  Edit any .conf (worldserver + module plugins)"
+        echo -e "  ${COLOR_CONFIG}[6]${RESET}  Update Control scripts"
         echo -e "  ${COLOR_CONFIG}[0]${RESET}  Back"
         echo "----------------------------------------------------------------------------"
-        read -rp "🔹  Choice [0-3]: " choice
+        read -rp "🔹  Choice [0-6]: " choice
         case "$choice" in
-            1) run_step patch_file "$WORLD_CONF" "$SCRIPT_DIR/worldserver.overrides.conf" "worldserver.conf" ;;
-            2) run_step patch_file "$PLAYERBOTS_CONF" "$SCRIPT_DIR/playerbots.overrides.conf" "playerbots.conf" ;;
-            3) run_step update_control ;;
+            1) "${EDITOR:-nano}" "$SCRIPT_DIR/values_world.conf" ;;
+            2) run_step apply_world_values ;;
+            3) "${EDITOR:-nano}" "$SCRIPT_DIR/values_playerbots.conf" ;;
+            4) run_step apply_playerbots_values ;;
+            5) run_step edit_any_conf ;;
+            6) run_step update_control ;;
             0) return ;;
             *) echo "Invalid option."; sleep 1 ;;
         esac
