@@ -152,6 +152,7 @@ EOF
 ACORE_DIR='$acore'
 SERVER_USER='$owner'
 CONTROL_SOURCE_DIR='$src'
+CONTROL_TMUX_L='acore-auth'
 AUTH_MENU='$menu'
 AUTH_ENGINE="\$ACORE_DIR/apps/startup-scripts/src/run-engine"
 AUTH_BINARY="\$ACORE_DIR/env/dist/bin/authserver"
@@ -173,6 +174,7 @@ EOF
 ACORE_DIR='$acore'
 SERVER_USER='$owner'
 CONTROL_SOURCE_DIR='$src'
+CONTROL_TMUX_L='acore-world'
 WORLD_MENU='$menu'
 WORLD_ENGINE="\$ACORE_DIR/apps/startup-scripts/src/run-engine"
 WORLD_BINARY="\$ACORE_DIR/env/dist/bin/worldserver"

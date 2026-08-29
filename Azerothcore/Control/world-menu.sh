@@ -40,8 +40,8 @@ restart_world() { server_restart worldserver "$WORLD_ENGINE" "$WORLD_BINARY" "$W
 reload_world()  { server_reload worldserver "$WORLD_SESSION"; }
 
 save_world() {
-    if tmux has-session -t "$WORLD_SESSION" 2>/dev/null; then
-        tmux send-keys -t "$WORLD_SESSION" '.server saveall' Enter
+    if tmx has-session -t "$WORLD_SESSION" 2>/dev/null; then
+        tmx send-keys -t "$WORLD_SESSION" '.server saveall' Enter
         echo "Save command sent to the Worldserver."
     else
         echo "No active Worldserver tmux session found."
@@ -233,8 +233,8 @@ menu() {
             5) run_step reload_world ;;
             6) run_step server_status worldserver "$WORLD_SESSION" ;;
             7) run_step save_world ;;
-            8) clear; tmux attach -t "$WORLD_SESSION" 2>/dev/null || { echo "No active worldserver tmux session."; wait_for_user; } ;;
-            9) clear; tmux capture-pane -S -100000 -t "$WORLD_SESSION" -p 2>/dev/null || echo "No scrollback available."; wait_for_user ;;
+            8) clear; tmx attach -t "$WORLD_SESSION" 2>/dev/null || { echo "No active worldserver tmux session."; wait_for_user; } ;;
+            9) clear; tmx capture-pane -S -100000 -t "$WORLD_SESSION" -p 2>/dev/null || echo "No scrollback available."; wait_for_user ;;
             10) run_step autostart_world ;;
             11) run_step restart_timer ;;
             12) build_menu ;;

@@ -204,8 +204,8 @@ menu() {
             3) run_step kill_auth ;;
             4) run_step restart_auth ;;
             5) run_step server_status authserver "$AUTH_SESSION" ;;
-            6) clear; tmux attach -t "$AUTH_SESSION" 2>/dev/null || { echo "No active authserver tmux session."; wait_for_user; } ;;
-            7) clear; tmux capture-pane -S -100000 -t "$AUTH_SESSION" -p 2>/dev/null || echo "No scrollback available."; wait_for_user ;;
+            6) clear; tmx attach -t "$AUTH_SESSION" 2>/dev/null || { echo "No active authserver tmux session."; wait_for_user; } ;;
+            7) clear; tmx capture-pane -S -100000 -t "$AUTH_SESSION" -p 2>/dev/null || echo "No scrollback available."; wait_for_user ;;
             8) run_step autostart_auth ;;
             9) build_menu ;;
             10) account_menu ;;

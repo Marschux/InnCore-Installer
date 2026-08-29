@@ -46,6 +46,11 @@ current_branch() {
     { [ -n "$b" ] && [ "$b" != HEAD ] && echo "$b"; } || echo unknown
 }
 
+# Per-role tmux server. Without -L both roles share one socket (per user), so a
+# second role's `new-session` lands in the first role's systemd cgroup and
+# stopping one unit kills both. CONTROL_TMUX_L comes from control.conf.
+tmx() { tmux -L "${CONTROL_TMUX_L:-default}" "$@"; }
+
 wait_for_user() {
     echo ""
     echo -e "${CYAN}↩  Press [ENTER] to return to the menu...${RESET}"
@@ -95,7 +100,7 @@ status_row() { printf ' %s  %-15s' "$1" "$2"; }
 status_dot() {   # status_dot <process-name> <session>
     local process="$1" session="$2" label
     label="${process^}:"
-    if tmux has-session -t "$session" 2>/dev/null; then
+    if tmx has-session -t "$session" 2>/dev/null; then
         if pgrep -x "$process" >/dev/null 2>&1; then
             echo -e "$(status_row 🟢 "$label")${GREEN}${BOLD}ONLINE${RESET}"
         else
@@ -134,12 +139,12 @@ server_start() {
     require_path "$binary" || return 1
     require_path "$conf" || return 1
 
-    if pgrep -x "$process" >/dev/null 2>&1 || tmux has-session -t "$session" 2>/dev/null; then
+    if pgrep -x "$process" >/dev/null 2>&1 || tmx has-session -t "$session" 2>/dev/null; then
         echo "$process is already running or already owns the session $session."
         return 0
     fi
 
-    tmux new-session -d -s "$session" \
+    tmx new-session -d -s "$session" \
         "cd '$ACORE_DIR' && '$engine' start '$binary' --server-config '$conf' --session-manager none"
     echo "$process started: $session"
 }
@@ -149,14 +154,14 @@ server_stop() {
     local waited=0
 
     if ! pgrep -x "$process" >/dev/null 2>&1; then
-        tmux kill-session -t "$session" 2>/dev/null || true
+        tmx kill-session -t "$session" 2>/dev/null || true
         echo "$process is not running."
         return 0
     fi
 
-    if [ -n "$shutdown_command" ] && tmux has-session -t "$session" 2>/dev/null; then
-        tmux send-keys -t "$session" "saveall" Enter
-        tmux send-keys -t "$session" "$shutdown_command" Enter
+    if [ -n "$shutdown_command" ] && tmx has-session -t "$session" 2>/dev/null; then
+        tmx send-keys -t "$session" "saveall" Enter
+        tmx send-keys -t "$session" "$shutdown_command" Enter
     else
         pkill -TERM -x "$process" 2>/dev/null || true
     fi
@@ -174,7 +179,7 @@ server_stop() {
         return 1
     fi
 
-    tmux kill-session -t "$session" 2>/dev/null || true
+    tmx kill-session -t "$session" 2>/dev/null || true
     echo "$process stopped gracefully."
 }
 
@@ -194,18 +199,18 @@ server_kill() {
         pkill -KILL -x "$process" 2>/dev/null
         sleep 1
     fi
-    tmux kill-session -t "$session" 2>/dev/null || true
+    tmx kill-session -t "$session" 2>/dev/null || true
     pgrep -x "$process" >/dev/null 2>&1 && { echo "$process still alive - check manually."; return 1; }
     echo "$process force-stopped."
 }
 
 server_reload() {
     local process="$1" session="$2"
-    if ! pgrep -x "$process" >/dev/null 2>&1 || ! tmux has-session -t "$session" 2>/dev/null; then
+    if ! pgrep -x "$process" >/dev/null 2>&1 || ! tmx has-session -t "$session" 2>/dev/null; then
         echo "$process is not running with an active tmux session."
         return 1
     fi
-    tmux send-keys -t "$session" "reload config" Enter
+    tmx send-keys -t "$session" "reload config" Enter
     echo "Config reload sent to $process."
 }
 
@@ -238,7 +243,7 @@ server_status() {
     else
         echo -e "Status: ${RED}${BOLD}OFFLINE${RESET}"
     fi
-    if tmux has-session -t "$session" 2>/dev/null; then
+    if tmx has-session -t "$session" 2>/dev/null; then
         echo -e "tmux: ${GREEN}ACTIVE${RESET} ($session)"
     else
         echo -e "tmux: ${DIM}INACTIVE${RESET} ($session)"
