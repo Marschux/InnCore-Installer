@@ -38,5 +38,11 @@ Aufgefallen beim Testbench-Durchlauf.
 
 ## Offen
 
-- [ ] `preseed_mysql_apt` auf frischer Box gegentesten (ob der whiptail-Dialog
-      dann wirklich wegbleibt). Braucht kompletten Reset + Rebuild.
+- [ ] **`preseed_mysql_apt` reicht NICHT.** Fresh-Test: die 3 debconf-Werte
+      sind zwar vorbelegt (Dialog zeigt "Currently selected: mysql-8.4-lts"),
+      aber der whiptail-Dialog erscheint trotzdem, weil `DEBIAN_FRONTEND=
+      noninteractive` acore.sh's inneres `sudo apt` nicht erreicht.
+      Fix: um den `install-deps`-Aufruf `DEBIAN_FRONTEND=noninteractive` in
+      `/etc/environment` schreiben (PAM/pam_env liest das bei jedem `sudo`),
+      danach wieder entfernen. Manuell im Dialog: Taste `O` (springt auf "Ok")
+      dann Enter.
