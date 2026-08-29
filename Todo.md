@@ -1,58 +1,90 @@
 # Todo / Findings
 
-Aufgefallen beim Testbench-Durchlauf.
-
-## Erledigt
-
-- [x] `run_basic_system` Step-Nummerierung 6→8 → jetzt fortlaufend (7 = Lock
-      root; auth Final = 8, world Final = 9).
-- [x] `mysql-apt-config` whiptail → `preseed_mysql_apt()` (debconf-set-selections)
-      vor beiden `acore.sh install-deps`. (Preseed-Wirkung noch nicht auf
-      frischer Box verifiziert.)
-- [x] Control sudoers-Grant → `install_control_role` schreibt
-      `/etc/sudoers.d/acore-control-{auth,world}` (NOPASSWD, auf die
-      azerothcore-*-Units + Unit-Datei tee/rm beschränkt), mit `visudo -c`.
-      Getestet: Autostart an/aus ohne Passwortabfrage.
-- [x] world-menu + auth-menu: **Force-Kill** (`[3] Kill server`, "KILL"-Confirm,
-      `server_kill` in common.sh: TERM → 5s → KILL → tmux kill-session).
-      Menüs renummeriert (world 0-14, auth 0-12). Getestet.
-- [x] Leere Account/Realm-Liste → `list_table()` in common.sh, gibt "(none)".
-- [x] `install_control_role`: warnt wenn SERVER_USER `CONTROL_SOURCE_DIR` nicht
-      lesen kann (Checkout in privatem Home statt /opt).
-- [x] Server-Tree nach Build `chown -R OWNER` (Backups/git schreibbar).
-- [x] `apply_values`: schreibt Werte verbatim (Quote-Bug behoben).
-- [x] `values_world.conf`: `InstantLogout` (ungültig) raus, `CharactersPerRealm`
-      50→10 (AC-Validator).
-
-- [x] geteilter tmux-Server bei Autostart → `tmx() = tmux -L $CONTROL_TMUX_L`
-      (acore-auth / acore-world) in common.sh + Menüs, Socket in control.conf.
-      Reboot-Test: jeder Server jetzt in eigener cgroup, `systemctl stop
-      azerothcore-world` lässt authserver laufen.
-
-- [~] Priority-Warnung: `AmbientCapabilities=CAP_SYS_NICE` gesetzt (worldserver
-      hat CapAmb 0x800000 verifiziert), Warnung kommt aber TROTZDEM. worldserver
-      versucht wohl RT-Scheduling (braucht zusätzlich `LimitRTPRIO=` in der Unit)
-      oder negativen nice (braucht `LimitNICE=`). Kosmetisch — läuft normal
-      weiter. Alternativ `Process.Priority = 0` in values_world.conf.
-- [x] values_*.conf gegen AC-Validatoren: authserver.conf + playerbots.conf
-      sauber, worldserver.conf nur `CharactersPerRealm` (gefixt). AC-Startup
-      validiert selbst und meldet — reicht als Prüfung.
-- [x] mod-playerbots-1.-Start-Hänger → in install.md dokumentiert (Kill → Start).
+Aus zwei kompletten Testbench-Durchläufen (echter Build, Debian 13).
 
 ## Offen
 
-- [ ] **`preseed_mysql_apt` reicht NICHT.** Fresh-Test: die 3 debconf-Werte
-      sind zwar vorbelegt (Dialog zeigt "Currently selected: mysql-8.4-lts"),
-      aber der whiptail-Dialog erscheint trotzdem, weil `DEBIAN_FRONTEND=
-      noninteractive` acore.sh's inneres `sudo apt` nicht erreicht.
-      Fix: um den `install-deps`-Aufruf `DEBIAN_FRONTEND=noninteractive` in
-      `/etc/environment` schreiben (PAM/pam_env liest das bei jedem `sudo`),
-      danach wieder entfernen. Manuell im Dialog: Taste `O` (springt auf "Ok")
-      dann Enter.
+### 1. `preseed_mysql_apt` unterdrückt den whiptail-Dialog nicht
+Beim World-Build (`run_worldserver` → `acore.sh install-deps`) erscheint der
+`mysql-apt-config`-Dialog trotzdem. Die 3 debconf-Werte sind zwar vorbelegt
+(Dialog zeigt „Currently selected: mysql-8.4-lts"), aber `DEBIAN_FRONTEND=
+noninteractive` erreicht acore.sh's inneres `sudo apt` nicht.
+**Fix:** um den `install-deps`-Aufruf `DEBIAN_FRONTEND=noninteractive` in
+`/etc/environment` schreiben (pam_env liest das bei jedem `sudo`), danach wieder
+entfernen. — Manuell wegklicken: Taste `O` oder `Down Down`, dann `Enter`.
+Zwingend **mysql-8.4-lts** (nicht 9.x — dort fehlt `mysql_native_password`).
 
-## Erledigt (Forts.)
+### 2. Priority-Warnung des worldserver
+Beim Start (Autostart oder als non-root) meldet der worldserver
+„Can't set process priority class, error: Permission denied".
+`AmbientCapabilities=CAP_SYS_NICE` ist in der Autostart-Unit gesetzt und kommt
+auch beim Prozess an (CapAmb 0x800000 verifiziert) — die Meldung bleibt.
+worldserver versucht wohl RT-Scheduling (`LimitRTPRIO=` nötig) oder negativen
+nice (`LimitNICE=`). **Rein kosmetisch**, läuft normal weiter.
+**Fix-Optionen:** `LimitNICE=-10` + `LimitRTPRIO=10` in die Unit, oder
+`Process.Priority = 0` in `values/values_world.conf`.
 
-- [x] Kein Disk-Vorab-Check → `check_disk()` vor Auth (~20 GB) / World (~45 GB)
-      Build; warnt + `confirm` bei zu wenig Platz. Fresh-Test scheiterte an einer
-      30-GB-Box mit "No space left on device" mitten im world make (build/ = 13 GB
-      RelWithDebInfo). install.md: Disk-Anforderung dokumentiert.
+### 3. `update_control` / `CONTROL_SOURCE_DIR` robuster machen
+`update_control` liest die neuen Skripte aus dem Repo-Checkout
+(`CONTROL_SOURCE_DIR`). Läuft das Menü als SERVER_USER und liegt der Checkout in
+einem 700-Home, schlägt es fehl. Es gibt jetzt eine Warnung beim Install, aber
+sauberer wäre: bei Install die Skript-Quellen zusätzlich nach `$target/.src/`
+kopieren und `update_control` von dort ziehen (dann checkout-unabhängig), bzw.
+`update_control` macht selbst `git -C <checkout> pull` + Copy.
+
+### 4. Doku-Überschneidung `README.md` ↔ `Azerothcore/install.md`
+Root-`README.md` (Deutsch) und `Azerothcore/install.md` (Englisch) beschreiben
+beide Menü / Usage / First-Start, teils mit abweichenden Pfaden
+(`/opt/wowserver-install` vs `/opt/wowserver-install/Azerothcore`,
+`cp install.sh` vs voller Clone). Eine als Kurzverweis auf die andere machen,
+oder klar aufteilen (README = Einstieg, install.md = Details).
+
+### 5. `run_worldserver` Schritt 3: `conf/dist/config.sh` vs `conf/config.sh`
+`sed` setzt `OSDISTRO` in `conf/dist/config.sh`, aber `acore.sh` liest zur
+Laufzeit `conf/config.sh` und meldet
+„NOTICE: file <.../conf/config.sh> not found, we use default configuration only".
+Build lief trotzdem durch (dist-Datei reicht für install-deps). Prüfen ob das
+für andere `acore.sh`-Schritte relevant ist, ggf. `cp conf/dist/config.sh
+conf/config.sh` nach dem `sed`.
+
+### 6. `values/*.conf` einmal vollständig gegen AC-Defaults gegenprüfen
+AC-Startup validiert selbst und meldet Fehler — bisher nur `CharactersPerRealm`
+aufgefallen (gefixt: 50→10). Trotzdem einmal alle Keys/Werte gegen die aktuellen
+`.conf.dist` + AC-Validatoren durchgehen (aus InnControl übernommen, dort ggf.
+weitere veraltete Werte).
+
+## Erledigt
+
+- [x] Step-Nummerierung `run_basic_system` fortlaufend (7 = Lock root, auth
+      Final = 8, world Final = 9).
+- [x] `preseed_mysql_apt()` vor `install-deps` (belegt die debconf-Werte vor —
+      siehe Offen #1 für den verbleibenden Teil).
+- [x] Control sudoers-Grant → `install_control_role` schreibt
+      `/etc/sudoers.d/acore-control-{auth,world}` (NOPASSWD, nur azerothcore-*-
+      Units + Unit-tee/rm), mit `visudo -c`. Getestet: Autostart/Timer ohne
+      Passwortabfrage.
+- [x] Force-Kill: `[3] Kill server` (KILL-Confirm) in beiden Menüs,
+      `server_kill` in common.sh (TERM → 5s → KILL → session). Menüs
+      renummeriert (world 0-14, auth 0-12). Getestet inkl. Playerbots-Hänger.
+- [x] Leere Account/Realm-Liste → `list_table()` → „(none)".
+- [x] Warnung wenn SERVER_USER `CONTROL_SOURCE_DIR` nicht lesen kann
+      (siehe Offen #3 für die volle Lösung).
+- [x] Server-Tree nach Build `chown -R OWNER` — Menü kann Backups/git schreiben.
+- [x] `apply_values`: Werte verbatim schreiben (Quote-Bug bei inneren Quotes
+      behoben, z.B. `Appender.Console`).
+- [x] `values/values_world.conf`: ungültiges `InstantLogout` raus,
+      `CharactersPerRealm` 50→10.
+- [x] geteilter tmux-Server bei Autostart → `tmx() = tmux -L $CONTROL_TMUX_L`
+      (acore-auth / acore-world). Reboot-Test: getrennte cgroups, `stop world`
+      lässt auth laufen und umgekehrt.
+- [x] `check_disk()` vor Auth (~20 GB) / World (~45 GB) Build, warnt + confirm.
+      install.md: Disk-Anforderung dokumentiert.
+- [x] `Control/install.sh` in `install.sh` eingefaltet (`install_control_role`).
+- [x] `values_*.conf` nach `Control/values/`.
+- [x] `Control/README.md` gelöscht (doppelt), Struktur + values-Erklärung in
+      install.md.
+- [x] Alle Control-Abfragen an den Anfang (Owner/Pfad/DB-Passwort/Control-Ziel),
+      `CONTROL_ASSUME_DEFAULTS`-Hack entfernt.
+- [x] Control-Menüs im InnControl-Look, `reexec_as_owner` (dubious-ownership-Fix).
+- [x] Skripte komplett auf Englisch.
+- [x] mod-playerbots-1.-Start-Hänger in install.md dokumentiert (Kill → Start).
