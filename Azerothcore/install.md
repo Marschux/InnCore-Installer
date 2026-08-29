@@ -2,13 +2,13 @@
 
 Mirrors the guides in this repo step by step, with a menu:
 
-| Choice | Installation | Guide / Repo |
-|------|--------------|--------------|
-| 1 | Basic System | [`Programmablauf/01-Basic-System.md`](Programmablauf/01-Basic-System.md) |
-| 2 | Authserver | `2 - Authserver/Guide Authserver.md` - build only |
-| 3 | Worldserver | `3 - Worldserver/Guide Worldserver.md` - build only |
-| 4 | Bothserver | Auth + World auf einer gemeinsamen LXC - optional |
-| 5 | Control | Eigene Verwaltungsmenüs für Auth- und Worldserver |
+| Choice | Installation | Scope |
+|------|--------------|-------|
+| 1 | Basic System | System preparation and security |
+| 2 | Authserver | Build only |
+| 3 | Worldserver | Build only |
+| 4 | Bothserver | Auth + World on one shared LXC - optional |
+| 5 | Control | Custom management menus for Auth and Worldserver |
 
 ## Usage
 
@@ -34,11 +34,10 @@ cd /opt/wowserver-install/Azerothcore
 
 - Fresh Debian 13 LXC, root or passwordless `sudo`
 - 2/3/4 require Basic System (1) to have run first
-- Installpunkt 1 fragt die Grunddaten am Anfang ab und richtet danach das
-  Debian-Basissystem, den Administrator, das dynamische MOTD, SSH und Fail2Ban
-  ein.
-- Eigene Installationen, Dienste und projektspezifische Anpassungen werden
-  bewusst nicht vorgegeben und müssen nach dem Basissystem ergänzt werden.
+- Install item 1 collects the base data at the start and then sets up the
+  Debian base system, the administrator, the dynamic MOTD, SSH and Fail2Ban.
+- Your own installations, services and project-specific adjustments are
+  deliberately not prescribed and must be added after the base system.
 
 
 ## Intentionally not part of the script
@@ -69,9 +68,8 @@ cd /opt/wowserver-install/Azerothcore
 `worldmenu`:
 ```
 
-Die Control-Installation wird nach den Installationspunkten 2, 3 und 4 am
-Ende optional angeboten. Menüpunkt 5 bleibt als nachträgliche Möglichkeit
-erhalten.
+The Control installation is offered optionally at the end of install items
+2, 3 and 4. Menu item 5 remains available as a later option.
 12       Pull Git updates
 12       Build worldserver
 12       Clean build directory

@@ -10,7 +10,7 @@ update_control() {
     sudo install -m 0755 "$CONTROL_SOURCE_DIR/world-menu.sh" "$SCRIPT_DIR/world-menu.sh"
     sudo install -m 0755 "$CONTROL_SOURCE_DIR/clean-build.sh" "$SCRIPT_DIR/clean-build.sh"
     sudo chown "$SERVER_USER:$SERVER_USER" "$SCRIPT_DIR"/*.sh
-    echo "World-Control-Skripte aktualisiert."
+    echo "World Control scripts updated."
 }
 
 WORLD_ENGINE="${WORLD_ENGINE:-$ACORE_DIR/apps/startup-scripts/src/run-engine}"
@@ -21,28 +21,32 @@ WORLD_SESSION="${WORLD_SESSION:-world-session}"
 WORLD_SERVICE_NAME="${WORLD_SERVICE_NAME:-azerothcore-world.service}"
 
 start_world() {
+    server_start worldserver "$WORLD_ENGINE" "$WORLD_BINARY" "$WORLD_CONF" "$WORLD_SESSION"
+    return $?
     require_path "$WORLD_ENGINE" || return 0
     require_path "$WORLD_BINARY" || return 0
     require_path "$WORLD_CONF" || return 0
-    if tmux has-session -t "$WORLD_SESSION" 2>/dev/null; then echo "Worldserver läuft bereits."; return; fi
+    if tmux has-session -t "$WORLD_SESSION" 2>/dev/null; then echo "Worldserver is already running."; return; fi
     tmux new-session -d -s "$WORLD_SESSION" "cd '$ACORE_DIR' && '$WORLD_ENGINE' start '$WORLD_BINARY' --server-config '$WORLD_CONF' --session-manager none"
-    echo "Worldserver gestartet."
+    echo "Worldserver started."
 }
 
 stop_world() {
+    server_stop worldserver "$WORLD_SESSION" "server shutdown 30" 180
+    return $?
     if pgrep -x worldserver >/dev/null 2>&1; then
         pkill -TERM -x worldserver
         for _ in $(seq 1 90); do pgrep -x worldserver >/dev/null 2>&1 || break; sleep 1; done
     fi
     tmux kill-session -t "$WORLD_SESSION" 2>/dev/null || true
-    pgrep -x worldserver >/dev/null 2>&1 && { echo "Worldserver reagiert nicht; kein automatischer KILL."; return 1; }
-    echo "Worldserver gestoppt."
+    pgrep -x worldserver >/dev/null 2>&1 && { echo "Worldserver not responding; no automatic KILL."; return 1; }
+    echo "Worldserver stopped."
 }
 
-restart_world() { stop_world; start_world; }
+restart_world() { server_restart worldserver "$WORLD_ENGINE" "$WORLD_BINARY" "$WORLD_CONF" "$WORLD_SESSION" "server shutdown 30" 180; }
 
 autostart_world() {
-    echo "1) Autostart aktivieren"; echo "2) Autostart deaktivieren"; read -rp "Auswahl [1-2]: " choice
+    echo "1) Enable autostart"; echo "2) Disable autostart"; read -rp "Choice [1-2]: " choice
     case "$choice" in
         1)
             sudo tee "/etc/systemd/system/$WORLD_SERVICE_NAME" >/dev/null <<EOF
@@ -62,26 +66,26 @@ TimeoutStopSec=180
 [Install]
 WantedBy=multi-user.target
 EOF
-            sudo systemctl daemon-reload; sudo systemctl enable "$WORLD_SERVICE_NAME"; echo "Autostart aktiviert." ;;
-        2) sudo systemctl disable "$WORLD_SERVICE_NAME" 2>/dev/null || true; sudo rm -f "/etc/systemd/system/$WORLD_SERVICE_NAME"; sudo systemctl daemon-reload; echo "Autostart deaktiviert." ;;
+            sudo systemctl daemon-reload; sudo systemctl enable "$WORLD_SERVICE_NAME"; echo "Autostart enabled." ;;
+        2) sudo systemctl disable "$WORLD_SERVICE_NAME" 2>/dev/null || true; sudo rm -f "/etc/systemd/system/$WORLD_SERVICE_NAME"; sudo systemctl daemon-reload; echo "Autostart disabled." ;;
     esac
 }
 
 save_world() {
     if tmux has-session -t "$WORLD_SESSION" 2>/dev/null; then
         tmux send-keys -t "$WORLD_SESSION" '.server saveall' Enter
-        echo "Save-Befehl an den Worldserver gesendet."
+        echo "Save command sent to the Worldserver."
     else
-        echo "Keine aktive Worldserver-tmux-Session gefunden."
+        echo "No active Worldserver tmux session found."
     fi
 }
 
 delete_account() {
-    read_login_database || { echo "LoginDatabaseInfo konnte nicht gelesen werden."; return 1; }
-    read -rp "Account-ID zum Löschen: " id
-    [[ "$id" =~ ^[0-9]+$ ]] || { echo "Ungültige Account-ID."; return 1; }
-    read -rp "Zum Bestätigen DELETE eingeben: " confirm
-    [ "$confirm" = DELETE ] && mysql_auth -e "DELETE FROM account WHERE id=$id; DELETE FROM account_access WHERE id=$id;" && echo "Account gelöscht."
+    read_login_database || { echo "Could not read LoginDatabaseInfo."; return 1; }
+    read -rp "Account ID to delete: " id
+    [[ "$id" =~ ^[0-9]+$ ]] || { echo "Invalid account ID."; return 1; }
+    read -rp "Type DELETE to confirm: " confirm
+    [ "$confirm" = DELETE ] && mysql_auth -e "DELETE FROM account WHERE id=$id; DELETE FROM account_access WHERE id=$id;" && echo "Account deleted."
 }
 
 patch_file() {
@@ -96,16 +100,16 @@ patch_file() {
         awk '/^[[:space:]]*[A-Za-z0-9_.-]+[[:space:]]*=/{print}' "$overrides"
         echo '# CONTROL PATCH END'
     } >> "$file"
-    echo "$label aktualisiert. Sicherung: $file.bak.$stamp"
+    echo "$label updated. Backup: $file.bak.$stamp"
 }
 
 restart_timer() {
-    echo "1) Timer anzeigen"; echo "2) Timer aktivieren/ändern"; echo "3) Timer deaktivieren"
-    read -rp "Auswahl [1-3]: " choice
+    echo "1) Show timer"; echo "2) Enable/change timer"; echo "3) Disable timer"
+    read -rp "Choice [1-3]: " choice
     case "$choice" in
-        1) systemctl status "$WORLD_TIMER_NAME" --no-pager 2>/dev/null || echo "Kein Timer eingerichtet." ;;
-        2) read -rp "Tägliche Neustartzeit (HH:MM): " time
-           [[ "$time" =~ ^([01][0-9]|2[0-3]):[0-5][0-9]$ ]] || { echo "Ungültige Uhrzeit."; return; }
+        1) systemctl status "$WORLD_TIMER_NAME" --no-pager 2>/dev/null || echo "No timer configured." ;;
+        2) read -rp "Daily restart time (HH:MM): " time
+           [[ "$time" =~ ^([01][0-9]|2[0-3]):[0-5][0-9]$ ]] || { echo "Invalid time."; return; }
            sudo tee "/etc/systemd/system/${WORLD_TIMER_NAME%.timer}.service" >/dev/null <<EOF
 [Unit]
 Description=AzerothCore Worldserver scheduled restart
@@ -123,8 +127,8 @@ Persistent=true
 [Install]
 WantedBy=timers.target
 EOF
-           sudo systemctl daemon-reload; sudo systemctl enable --now "$WORLD_TIMER_NAME"; echo "Timer aktiviert: täglich um $time" ;;
-        3) sudo systemctl disable --now "$WORLD_TIMER_NAME" 2>/dev/null || true; echo "Timer deaktiviert." ;;
+           sudo systemctl daemon-reload; sudo systemctl enable --now "$WORLD_TIMER_NAME"; echo "Timer enabled: daily at $time" ;;
+        3) sudo systemctl disable --now "$WORLD_TIMER_NAME" 2>/dev/null || true; echo "Timer disabled." ;;
     esac
 }
 
@@ -132,12 +136,18 @@ menu() {
     while true; do
         menu_title "🌍" "AzerothCore Worldserver Control" worldserver "$WORLD_SESSION"
         menu_section "Server"
-        echo "  1) ▶️  Starten"; echo "  2) ⏹️  Stoppen"; echo "  3) 🔄  Neustart"; echo "  4) 📊  Status"; echo "  5) ⚙️  Autostart"; echo "  6) ⏱️  Neustart-Timer"
-        menu_section "Welt und Wartung"
-        echo "  7) 💾  Welt speichern"; echo "  8) ⬇️  Source und Playerbots aktualisieren"; echo "  9) 🔨  Bauen und installieren"; echo " 10) 🧹  Build bereinigen"
-        menu_section "Verwaltung und Konfiguration"
-        echo " 11) 👤  Account löschen"; echo " 12) 📝  worldserver.conf patchen"; echo " 13) 📝  playerbots.conf patchen"; echo " 14) 🔄  Control-Skripte aktualisieren"; echo "  0) 🚪  Beenden"
-        echo ""; read -rp "Auswahl [0-14]: " choice
+        echo "  1) ▶️  Start"; echo "  2) ⏹️  Stop"; echo "  3) 🔄  Restart"; echo "  4) 📊  Status"; echo "  5) ⚙️  Autostart"; echo "  6) ⏱️  Restart timer"
+        menu_section "World and maintenance"
+        echo "  7) 💾  Save world"; echo "  8) ⬇️  Update source and Playerbots"; echo "  9) 🔨  Build and install"; echo " 10) 🧹  Clean build"
+        menu_section "Management and configuration"
+        echo " 11) 👤  Delete account"; echo " 12) 📝  Patch worldserver.conf"; echo " 13) 📝  Patch playerbots.conf"; echo " 14) 🔄  Update Control scripts"; echo "  0) 🚪  Exit"
+        echo " 15) Send config reload to Worldserver"
+        echo ""; read -rp "Choice [0-15]: " choice
+        if [ "$choice" = 15 ]; then
+            server_reload worldserver "$WORLD_SESSION"
+            pause_control
+            continue
+        fi
         case "$choice" in
             1) start_world ;; 2) stop_world ;; 3) restart_world ;; 4) server_status worldserver "$WORLD_SESSION" ;; 5) autostart_world ;; 6) restart_timer ;; 7) save_world ;; 8) git -C "$ACORE_DIR" pull --ff-only; git -C "$ACORE_DIR/modules/mod-playerbots" pull --ff-only ;; 9) safe_build "$ACORE_DIR/build" ;; 10) "$SCRIPT_DIR/clean-build.sh" "$ACORE_DIR" ;; 11) delete_account ;; 12) patch_file "$WORLD_CONF" "$SCRIPT_DIR/worldserver.overrides.conf" "worldserver.conf" ;; 13) patch_file "$PLAYERBOTS_CONF" "$SCRIPT_DIR/playerbots.overrides.conf" "playerbots.conf" ;; 14) update_control ;; 0) return ;; esac
         pause_control

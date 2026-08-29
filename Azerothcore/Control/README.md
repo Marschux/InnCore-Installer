@@ -1,10 +1,10 @@
 # AzerothCore Control
 
-Eigene, kleine Steuerungsskripte für die installierten AzerothCore-Server.
-Diese Dateien gehören zu diesem Repository und haben keine Abhängigkeit von
-InnControl oder einem weiteren Repository.
+Small custom control scripts for the installed AzerothCore servers.
+These files belong to this repository and have no dependency on
+InnControl or any other repository.
 
-## Struktur
+## Structure
 
 ```text
 Control/
@@ -13,48 +13,48 @@ Control/
 └── install.sh
 ```
 
-Die Control-Skripte werden getrennt von den AzerothCore-Quell- und Builddateien
-installiert. Der Build-Cleaner darf ausschließlich den exakten Pfad
-`<ACORE_DIR>/build` bereinigen.
+The Control scripts are installed separately from the AzerothCore source and
+build files. The build cleaner may only clean the exact path
+`<ACORE_DIR>/build`.
 
-## Geplante Funktionen
+## Features
 
 ### Authserver
 
-- Start, Stop, Neustart und Status
-- Autostart verwalten
-- AzerothCore aktualisieren und bauen
-- Build-Verzeichnis sicher bereinigen
-- `authserver.conf` öffnen
-- Accountverwaltung
-- Realmverwaltung
+- Start, stop, restart and status
+- Manage autostart
+- Update and build AzerothCore
+- Safely clean the build directory
+- Open `authserver.conf`
+- Account management
+- Realm management
 
 ### Worldserver
 
-- Start, Stop, Neustart und Status
-- Autostart und Neustart-Timer verwalten
-- Welt speichern
-- AzerothCore und Playerbots aktualisieren und bauen
-- Build-Verzeichnis sicher bereinigen
-- Accounts löschen
-- `worldserver.conf` patchen
-- `playerbots.conf` patchen
+- Start, stop, restart and status
+- Manage autostart and restart timer
+- Save world
+- Update and build AzerothCore and Playerbots
+- Safely clean the build directory
+- Delete accounts
+- Patch `worldserver.conf`
+- Patch `playerbots.conf`
 
-## Verwendung
+## Usage
 
-Installation über Menüpunkt 5 des Hauptinstallers oder direkt mit:
+Install via menu item 5 of the main installer, or directly with:
 
 ```bash
 bash Control/install.sh
 ```
 
-Danach werden die Menüs beispielsweise so gestartet:
+The menus are then started, for example, like this:
 
 ```bash
 /opt/acore-auth-control/auth-menu.sh
 /opt/acore-world-control/world-menu.sh
 ```
 
-Das World-Menü nutzt eigene Override-Dateien für Konfigurationsänderungen.
-Nur gültige `key = value`-Zeilen werden in einen markierten Block übernommen;
-vorher wird automatisch eine Sicherung der Zielkonfiguration angelegt.
+The world menu uses dedicated override files for configuration changes.
+Only valid `key = value` lines are merged into a marked block; a backup of the
+target configuration is created automatically beforehand.
