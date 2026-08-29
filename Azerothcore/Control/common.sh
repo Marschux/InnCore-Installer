@@ -245,15 +245,14 @@ apply_values() {
     while IFS='=' read -r key value || [ -n "$key" ]; do
         key="$(echo "$key" | xargs 2>/dev/null)"
         [[ -z "$key" || "$key" == \#* ]] && continue
-        value="$(echo "$value" | cut -d'#' -f1 | xargs | sed 's/^"//;s/"$//')"
+        # Value is written verbatim: the summary file is the source of truth for
+        # quoting. Only strip a trailing " # comment" (space-guarded so a '#'
+        # inside a quoted value or password survives) and surrounding whitespace.
+        value="$(printf '%s' "$value" | sed -E 's/[[:space:]]+#.*$//; s/^[[:space:]]+//; s/[[:space:]]+$//')"
         ek="$(printf '%s' "$key"   | sed 's/[][\\/.^$*+?{}|()]/\\&/g')"
         ev="$(printf '%s' "$value" | sed 's/[\\/&]/\\&/g')"
         if grep -qE "^${ek}[[:space:]]*=" "$target"; then
-            if [[ "$value" =~ [[:space:]\;] || ! "$value" =~ ^[0-9]+$ ]]; then
-                sed -i -E "s@^${ek}[[:space:]]*=.*@${key} = \"${ev}\"@" "$target"
-            else
-                sed -i -E "s@^${ek}[[:space:]]*=.*@${key} = ${ev}@" "$target"
-            fi
+            sed -i -E "s@^${ek}[[:space:]]*=.*@${key} = ${ev}@" "$target"
             echo -e "  ${GREEN}✓${RESET} $key = $value"
         else
             echo -e "  ${YELLOW}– skipped (not in target):${RESET} $key"
