@@ -115,7 +115,7 @@ realm_menu() {
 }
 
 apply_auth_values() {
-    apply_values "$SCRIPT_DIR/values_auth.conf" "$AUTH_CONF" || return 1
+    apply_values "$SCRIPT_DIR/values/values_auth.conf" "$AUTH_CONF" || return 1
     echo ""
     read -rp "Restart authserver now to load the changes? [y/N]: " r
     case "$r" in y|Y|j|J) restart_auth ;; *) echo "Not restarted - changes apply on next restart." ;; esac
@@ -134,7 +134,7 @@ config_menu() {
         echo "----------------------------------------------------------------------------"
         read -rp "🔹  Choice [0-4]: " choice
         case "$choice" in
-            1) "${EDITOR:-nano}" "$SCRIPT_DIR/values_auth.conf" ;;
+            1) "${EDITOR:-nano}" "$SCRIPT_DIR/values/values_auth.conf" ;;
             2) run_step apply_auth_values ;;
             3) "${EDITOR:-nano}" "$AUTH_CONF" ;;
             4) run_step update_control ;;

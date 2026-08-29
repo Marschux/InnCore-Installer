@@ -40,6 +40,27 @@ cd /opt/wowserver-install/Azerothcore
   deliberately not prescribed and must be added after the base system.
 
 
+## Control/ layout
+
+```text
+Control/
+├── common.sh              shared helpers (status, server control, apply_values)
+├── auth-menu.sh            authmenu
+├── world-menu.sh           worldmenu
+├── clean-build.sh          build-dir cleaner (only <ACORE_DIR>/build)
+└── values/                 curated config summaries
+    ├── values_auth.conf
+    ├── values_world.conf
+    └── values_playerbots.conf
+```
+
+`values/*.conf` are curated summaries of the real config files. Edit one in the
+menu, then "Apply": every key that also exists in the target config is written
+there in place (verbatim value, timestamped backup first); keys not in the
+target are reported and skipped. Copied on install, never overwritten by
+"Update Control scripts", so operator edits survive an update. The world menu's
+"Edit any .conf" also covers `worldserver.conf` plus any module conf.
+
 ## First start via `authmenu` / `worldmenu`
 
 The Control menus are offered at the end of items 2/3/4 (or install later via

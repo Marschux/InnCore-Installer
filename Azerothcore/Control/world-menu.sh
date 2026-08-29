@@ -121,14 +121,14 @@ delete_account() {
 }
 
 apply_world_values() {
-    apply_values "$SCRIPT_DIR/values_world.conf" "$WORLD_CONF" || return 1
+    apply_values "$SCRIPT_DIR/values/values_world.conf" "$WORLD_CONF" || return 1
     echo ""
     read -rp "Restart worldserver now to load the changes? [y/N]: " r
     case "$r" in y|Y|j|J) restart_world ;; *) echo "Not restarted - changes apply on next restart." ;; esac
 }
 
 apply_playerbots_values() {
-    apply_values "$SCRIPT_DIR/values_playerbots.conf" "$PLAYERBOTS_CONF" || return 1
+    apply_values "$SCRIPT_DIR/values/values_playerbots.conf" "$PLAYERBOTS_CONF" || return 1
     echo ""
     read -rp "Restart worldserver now to load the changes? [y/N]: " r
     case "$r" in y|Y|j|J) restart_world ;; *) echo "Not restarted - changes apply on next restart." ;; esac
@@ -170,9 +170,9 @@ config_menu() {
         echo "----------------------------------------------------------------------------"
         read -rp "🔹  Choice [0-6]: " choice
         case "$choice" in
-            1) "${EDITOR:-nano}" "$SCRIPT_DIR/values_world.conf" ;;
+            1) "${EDITOR:-nano}" "$SCRIPT_DIR/values/values_world.conf" ;;
             2) run_step apply_world_values ;;
-            3) "${EDITOR:-nano}" "$SCRIPT_DIR/values_playerbots.conf" ;;
+            3) "${EDITOR:-nano}" "$SCRIPT_DIR/values/values_playerbots.conf" ;;
             4) run_step apply_playerbots_values ;;
             5) run_step edit_any_conf ;;
             6) run_step update_control ;;

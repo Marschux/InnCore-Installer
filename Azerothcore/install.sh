@@ -140,9 +140,9 @@ EOF
     sudo chmod 0440 "/etc/sudoers.d/acore-control-$role"
     sudo visudo -cf "/etc/sudoers.d/acore-control-$role" >/dev/null || { warn "sudoers grant invalid - removing."; sudo rm -f "/etc/sudoers.d/acore-control-$role"; }
 
-    # keep_values: copy a values summary only if it is not there yet, so a
+    # keep_values: copy a values/ summary only if it is not there yet, so a
     # re-install / "Update Control scripts" never overwrites the operator's edits.
-    keep_values() { [ -f "$target/$1" ] || sudo install -o "$owner" -g "$owner" -m 0644 "$src/$1" "$target/$1"; }
+    keep_values() { [ -f "$target/values/$1" ] || sudo install -D -o "$owner" -g "$owner" -m 0644 "$src/values/$1" "$target/values/$1"; }
 
     if [ "$role" = auth ]; then
         sudo install -m 0755 "$src/auth-menu.sh" "$target/auth-menu.sh"
