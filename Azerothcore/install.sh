@@ -86,14 +86,105 @@ offer_control_installation() {
         return
     fi
     step "Install Control menu"
-    # CONTROL_ASSUME_DEFAULTS=1 makes Control/install.sh non-interactive: all
-    # answers were already collected up front, so it runs unattended here.
     case "${CONTROL_ROLE:-}" in
-        auth) CONTROL_ASSUME_DEFAULTS=1 CONTROL_ACTION=install CONTROL_ROLE=auth CONTROL_AUTH_TARGET="${CONTROL_AUTH_TARGET:-}" CONTROL_AUTH_DIR="$AUTH_DIR" CONTROL_AUTH_OWNER="$AUTH_OWNER" bash "$SCRIPT_DIR/Control/install.sh" ;;
-        world) CONTROL_ASSUME_DEFAULTS=1 CONTROL_ACTION=install CONTROL_ROLE=world CONTROL_WORLD_TARGET="${CONTROL_WORLD_TARGET:-}" CONTROL_WORLD_DIR="$WORLD_DIR" CONTROL_WORLD_OWNER="$WORLD_OWNER" bash "$SCRIPT_DIR/Control/install.sh" ;;
-        both) CONTROL_ASSUME_DEFAULTS=1 CONTROL_ACTION=install CONTROL_ROLE=both CONTROL_AUTH_TARGET="${CONTROL_AUTH_TARGET:-}" CONTROL_AUTH_DIR="$AUTH_DIR" CONTROL_AUTH_OWNER="$AUTH_OWNER" CONTROL_WORLD_TARGET="${CONTROL_WORLD_TARGET:-}" CONTROL_WORLD_DIR="$WORLD_DIR" CONTROL_WORLD_OWNER="$WORLD_OWNER" bash "$SCRIPT_DIR/Control/install.sh" ;;
+        auth)  install_control_role auth "${CONTROL_AUTH_TARGET:-/opt/acore-auth-control}" "$AUTH_DIR" "$AUTH_OWNER" ;;
+        world) install_control_role world "${CONTROL_WORLD_TARGET:-/opt/acore-world-control}" "$WORLD_DIR" "$WORLD_OWNER" ;;
+        both)
+            install_control_role auth  "${CONTROL_AUTH_TARGET:-/opt/acore-auth-control}"  "$AUTH_DIR"  "$AUTH_OWNER"
+            install_control_role world "${CONTROL_WORLD_TARGET:-/opt/acore-world-control}" "$WORLD_DIR" "$WORLD_OWNER"
+            ;;
         *) warn "Could not determine the Control role."; return 1 ;;
     esac
+    echo "Usage: run authmenu or worldmenu."
+}
+
+# Installs the Control menu for one role. All four arguments are required;
+# menu item 5 collects them interactively, the post-build flow passes what was
+# gathered up front.
+install_control_role() {
+    local role="$1" target="$2" acore="$3" owner="$4"
+    local src="$SCRIPT_DIR/Control" menu conf
+
+    [[ "$target" = /* && "$target" != "/" ]] || { warn "Invalid Control path: $target"; return 1; }
+    [[ "$acore"  = /* && "$acore"  != "/" ]] || { warn "Invalid AzerothCore path: $acore"; return 1; }
+
+    sudo install -d -o "$owner" -g "$owner" "$target"
+    sudo install -m 0755 "$src/common.sh" "$target/common.sh"
+    sudo install -m 0755 "$src/clean-build.sh" "$target/clean-build.sh"
+
+    if [ "$role" = auth ]; then
+        sudo install -m 0755 "$src/auth-menu.sh" "$target/auth-menu.sh"
+        menu="$target/auth-menu.sh"
+        sudo tee "$target/control.conf" >/dev/null <<EOF
+ACORE_DIR='$acore'
+SERVER_USER='$owner'
+CONTROL_SOURCE_DIR='$src'
+AUTH_MENU='$menu'
+AUTH_ENGINE="\$ACORE_DIR/apps/startup-scripts/src/run-engine"
+AUTH_BINARY="\$ACORE_DIR/env/dist/bin/authserver"
+AUTH_CONF="\$ACORE_DIR/env/dist/etc/authserver.conf"
+AUTH_SESSION='auth-session'
+AUTH_SERVICE_NAME='azerothcore-auth.service'
+EOF
+        sudo tee /usr/local/bin/authmenu >/dev/null <<EOF
+#!/usr/bin/env bash
+exec '$menu' "\$@"
+EOF
+        sudo chmod 0755 /usr/local/bin/authmenu
+    else
+        sudo install -m 0755 "$src/world-menu.sh" "$target/world-menu.sh"
+        menu="$target/world-menu.sh"
+        sudo tee "$target/control.conf" >/dev/null <<EOF
+ACORE_DIR='$acore'
+SERVER_USER='$owner'
+CONTROL_SOURCE_DIR='$src'
+WORLD_MENU='$menu'
+WORLD_ENGINE="\$ACORE_DIR/apps/startup-scripts/src/run-engine"
+WORLD_BINARY="\$ACORE_DIR/env/dist/bin/worldserver"
+WORLD_CONF="\$ACORE_DIR/env/dist/etc/worldserver.conf"
+PLAYERBOTS_CONF="\$ACORE_DIR/env/dist/etc/modules/playerbots.conf"
+WORLD_SESSION='world-session'
+WORLD_SERVICE_NAME='azerothcore-world.service'
+WORLD_TIMER_NAME='azerothcore-world-restart.timer'
+EOF
+        sudo install -o "$owner" -g "$owner" -m 0644 /dev/null "$target/worldserver.overrides.conf"
+        sudo install -o "$owner" -g "$owner" -m 0644 /dev/null "$target/playerbots.overrides.conf"
+        sudo tee /usr/local/bin/worldmenu >/dev/null <<EOF
+#!/usr/bin/env bash
+exec '$menu' "\$@"
+EOF
+        sudo chmod 0755 /usr/local/bin/worldmenu
+    fi
+
+    sudo chown -R "$owner:$owner" "$target"
+    echo "$role Control installed: $target"
+}
+
+# Menu item 5: install Control standalone, after a server build.
+install_control_standalone() {
+    local role
+    read -rp "1) Authserver  2) Worldserver  3) Both [1-3]: " role
+    case "$role" in
+        1) role=auth ;;
+        2) role=world ;;
+        3) install_control_standalone_role auth; install_control_standalone_role world; return ;;
+        *) warn "Invalid choice."; return 1 ;;
+    esac
+    install_control_standalone_role "$role"
+}
+
+install_control_standalone_role() {
+    local role="$1" target acore owner default_dir default_acore default_owner
+    if [ "$role" = auth ]; then
+        default_dir=/opt/acore-auth-control; default_acore=/opt/ac-authserver
+    else
+        default_dir=/opt/acore-world-control; default_acore=/opt/ac-worldserver
+    fi
+    default_owner="$(stat -c '%U' "$default_acore" 2>/dev/null || id -un)"
+    read -rp "Installation path for $role Control [$default_dir]: " target
+    read -rp "AzerothCore path for the ${role^}server [$default_acore]: " acore
+    read -rp "User for the ${role^}server [$default_owner]: " owner
+    install_control_role "$role" "${target:-$default_dir}" "${acore:-$default_acore}" "${owner:-$default_owner}"
 }
 
 require_root_or_sudo() {
@@ -647,7 +738,7 @@ main() {
             5)
                 step "5. Install AzerothCore Control"
                 confirm "Has the required Auth or Worldserver already been installed and built?"
-                bash "$SCRIPT_DIR/Control/install.sh"
+                install_control_standalone
                 ;;
             6)
                 run_mysql_only

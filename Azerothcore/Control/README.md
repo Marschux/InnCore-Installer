@@ -8,9 +8,10 @@ InnControl or any other repository.
 
 ```text
 Control/
-├── auth/
-├── world/
-└── install.sh
+├── common.sh          shared helpers (palette, status, server control)
+├── auth-menu.sh       authmenu
+├── world-menu.sh      worldmenu
+└── clean-build.sh     build-dir cleaner
 ```
 
 The Control scripts are installed separately from the AzerothCore source and
@@ -42,13 +43,8 @@ build files. The build cleaner may only clean the exact path
 
 ## Usage
 
-Install via menu item 5 of the main installer, or directly with:
-
-```bash
-bash Control/install.sh
-```
-
-The menus are then started, for example, like this:
+Installed by `install.sh` (offered at the end of items 2/3/4, or on demand
+via menu item 5). The menus are then started, for example, like this:
 
 ```bash
 /opt/acore-auth-control/auth-menu.sh
