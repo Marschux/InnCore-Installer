@@ -4,9 +4,9 @@
 #    AZEROTHCORE - COMBINED INSTALL SCRIPT                                    #
 #    ----------------------------------------------------------------------   #
 #    Menu choices:                                                            #
-#      1) Basic System   (see "Guide Basic System.md")                       #
-#      2) Authserver      - build only (see "2 - Authserver/Guide Authserver.md") #
-#      3) Worldserver     - build only (see "3 - Worldserver/Guide Worldserver.md") #
+#      1) Basic System                                                        #
+#      2) Authserver      - build only                                       #
+#      3) Worldserver     - build only                                       #
 #      4) Bothserver      - Auth + World, one LXC, build only #
 #                                                                              #
 #    This script mirrors the guides step for step. It is NOT fully           #
@@ -19,6 +19,9 @@
 ################################################################################
 
 set -euo pipefail
+
+# Absolut aufloesen, solange das cwd noch stimmt (spaeter wird per 'cd build' gewechselt)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 CYAN='\033[0;36m'
 GREEN='\033[0;32m'
@@ -55,21 +58,26 @@ hint() {
     echo -e "${YELLOW}$1${NC}"
 }
 
-offer_control_installation() {
-    [ "${SKIP_CONTROL_PROMPT:-0}" = 1 ] && return
-    echo ""
+ask_install_control() {
     read -rp "Control-Menü jetzt optional installieren? [y/N]: " control_choice
     case "$control_choice" in
-        y|Y|j|J)
-            step "Control-Menü installieren"
-            case "${CONTROL_ROLE:-}" in
-                auth) CONTROL_ACTION=install CONTROL_ROLE=auth CONTROL_AUTH_DIR="$AUTH_DIR" CONTROL_AUTH_OWNER="$AUTH_OWNER" bash "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/Control/install.sh" ;;
-                world) CONTROL_ACTION=install CONTROL_ROLE=world CONTROL_WORLD_DIR="$WORLD_DIR" CONTROL_WORLD_OWNER="$WORLD_OWNER" bash "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/Control/install.sh" ;;
-                both) CONTROL_ACTION=install CONTROL_ROLE=both CONTROL_AUTH_DIR="$AUTH_DIR" CONTROL_AUTH_OWNER="$AUTH_OWNER" CONTROL_WORLD_DIR="$WORLD_DIR" CONTROL_WORLD_OWNER="$WORLD_OWNER" bash "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/Control/install.sh" ;;
-                *) warn "Control-Rolle konnte nicht bestimmt werden."; return 1 ;;
-            esac
-            ;;
-        *) echo "Control-Menü wird übersprungen. Es kann später über Menüpunkt 5 installiert werden." ;;
+        y|Y|j|J) INSTALL_CONTROL=1 ;;
+        *) INSTALL_CONTROL=0 ;;
+    esac
+}
+
+offer_control_installation() {
+    [ "${SKIP_CONTROL_PROMPT:-0}" = 1 ] && return
+    if [ "${INSTALL_CONTROL:-0}" != 1 ]; then
+        echo "Control-Menü wird übersprungen. Es kann später über Menüpunkt 5 installiert werden."
+        return
+    fi
+    step "Control-Menü installieren"
+    case "${CONTROL_ROLE:-}" in
+        auth) CONTROL_ACTION=install CONTROL_ROLE=auth CONTROL_AUTH_DIR="$AUTH_DIR" CONTROL_AUTH_OWNER="$AUTH_OWNER" bash "$SCRIPT_DIR/Control/install.sh" ;;
+        world) CONTROL_ACTION=install CONTROL_ROLE=world CONTROL_WORLD_DIR="$WORLD_DIR" CONTROL_WORLD_OWNER="$WORLD_OWNER" bash "$SCRIPT_DIR/Control/install.sh" ;;
+        both) CONTROL_ACTION=install CONTROL_ROLE=both CONTROL_AUTH_DIR="$AUTH_DIR" CONTROL_AUTH_OWNER="$AUTH_OWNER" CONTROL_WORLD_DIR="$WORLD_DIR" CONTROL_WORLD_OWNER="$WORLD_OWNER" bash "$SCRIPT_DIR/Control/install.sh" ;;
+        *) warn "Control-Rolle konnte nicht bestimmt werden."; return 1 ;;
     esac
 }
 
@@ -225,10 +233,10 @@ collect_basic_inputs() {
     step "1. Vorbereitung und Eingaben"
     confirm "Ist das Debian-LXC mit deinen eigenen Vorbereitungen und Anpassungen fertig eingerichtet?"
 
-    echo "Bitte die Zeitzone über das folgende Menü auswählen:"
-    SERVER_TIMEZONE="$(tzselect)"
-    if [ -z "$SERVER_TIMEZONE" ]; then
-        warn "Keine Zeitzone ausgewählt."
+    read -rp "Zeitzone [Europe/Berlin]: " SERVER_TIMEZONE
+    SERVER_TIMEZONE=${SERVER_TIMEZONE:-Europe/Berlin}
+    if [ -z "$SERVER_TIMEZONE" ] || [ ! -f "/usr/share/zoneinfo/$SERVER_TIMEZONE" ]; then
+        warn "Unbekannte Zeitzone: $SERVER_TIMEZONE"
         exit 1
     fi
 
@@ -278,6 +286,37 @@ collect_database_password() {
         warn "Die Passwörter stimmen nicht überein. Bitte erneut eingeben."
     done
     unset DB_PASS_CONFIRM
+}
+
+setup_database() {
+    local profile="$1"
+
+    step "MySQL 8.4 configuration"
+    sudo tee /etc/mysql/mysql.conf.d/acore_limits.cnf > /dev/null << 'EOF'
+[mysqld]
+bind-address            = 0.0.0.0
+mysqlx-bind-address     = 0.0.0.0
+disable_log_bin
+mysql_native_password   = ON
+EOF
+    echo "MySQL config written: /etc/mysql/mysql.conf.d/acore_limits.cnf"
+    sudo systemctl restart mysql
+    echo "MySQL restarted."
+
+    step "Automatisches MySQL-Tuning"
+    generate_mysql_tuning "$profile"
+    sudo systemctl restart mysql
+
+    step "Create databases and MySQL user"
+    sudo mysql -u root << EOF
+CREATE USER IF NOT EXISTS 'acore'@'localhost' IDENTIFIED WITH mysql_native_password BY '$DB_PASS';
+CREATE USER IF NOT EXISTS 'acore'@'%' IDENTIFIED WITH mysql_native_password BY '$DB_PASS';
+
+GRANT ALL PRIVILEGES ON *.* TO 'acore'@'localhost' WITH GRANT OPTION;
+GRANT ALL PRIVILEGES ON *.* TO 'acore'@'%' WITH GRANT OPTION;
+
+FLUSH PRIVILEGES;
+EOF
 }
 
 install_motd_template() {
@@ -376,11 +415,6 @@ findtime = 600
 EOF
     systemctl enable fail2ban; systemctl restart fail2ban; sleep 2; fail2ban-client status
 
-    step "7. Zugang testen"
-    echo "Öffne ein NEUES Terminal und teste die SSH-Anmeldung als '$ADMIN_USER'."
-    echo "Prüfe außerdem, ob 'sudo -i' funktioniert."
-    pause "Erst nach erfolgreichem SSH- und sudo-Test fortfahren."
-
     step "8. Root-Passwort sperren"
     sudo passwd -l root
     print_basic_checklist
@@ -418,43 +452,17 @@ run_authserver() {
       -DAPPS_BUILD=auth-only \
       -DTOOLS_BUILD=none \
       -DSCRIPTS=none
-    confirm "Scale up Proxmox resources (CPU/RAM) for this LXC now, then confirm."
 
     step "6. Build and install"
     make -j "$(nproc)"
     make install
-    confirm "Scale Proxmox resources back down now, then confirm."
 
     step "7. Folder structure and config files"
     cp "$AUTH_DIR/env/dist/etc/authserver.conf.dist" "$AUTH_DIR/env/dist/etc/authserver.conf"
     echo "authserver.conf created: $AUTH_DIR/env/dist/etc/authserver.conf"
 
-    step "8. MySQL 8.4 configuration"
-    sudo tee /etc/mysql/mysql.conf.d/azcore_limits.cnf > /dev/null << 'EOF'
-[mysqld]
-bind-address            = 0.0.0.0
-mysqlx-bind-address     = 0.0.0.0
-disable_log_bin
-mysql_native_password   = ON
-EOF
-    echo "MySQL config written: /etc/mysql/mysql.conf.d/azcore_limits.cnf"
-    sudo systemctl restart mysql
-    echo "MySQL restarted."
+    setup_database "${TUNING_PROFILE:-auth}"
 
-    step "9. Automatisches MySQL-Tuning"
-    generate_mysql_tuning "${TUNING_PROFILE:-auth}"
-    sudo systemctl restart mysql
-
-    step "10. Create databases and MySQL user"
-    sudo mysql -u root << EOF
-CREATE USER IF NOT EXISTS 'acore'@'localhost' IDENTIFIED WITH mysql_native_password BY '$DB_PASS';
-CREATE USER IF NOT EXISTS 'acore'@'%' IDENTIFIED WITH mysql_native_password BY '$DB_PASS';
-
-GRANT ALL PRIVILEGES ON *.* TO 'acore'@'localhost' WITH GRANT OPTION;
-GRANT ALL PRIVILEGES ON *.* TO 'acore'@'%' WITH GRANT OPTION;
-
-FLUSH PRIVILEGES;
-EOF
     step "11. Final step"
     echo "The Authserver build and database setup are complete."
     echo "Management scripts and the final 'authmenu' start flow are handled separately."
@@ -495,12 +503,10 @@ run_worldserver() {
       -DAPPS_BUILD=world-only \
       -DSCRIPTS=static \
       -DTOOLS_BUILD=none
-    confirm "Scale up Proxmox resources (CPU/RAM) for this LXC now, then confirm."
 
     step "6. Build and install"
     make -j "$(nproc)"
     make install
-    confirm "Scale Proxmox resources back down now, then confirm."
 
     step "7. Extract client data"
     pause "If extracting from your own 3.3.5a client, put the files in place now before the assistant starts. The assistant also offers to download pre-extracted maps/vmaps/mmaps/dbc instead, if you don't have a local client."
@@ -513,35 +519,8 @@ run_worldserver() {
     cp "$WORLD_DIR/env/dist/etc/modules/playerbots.conf.dist" "$WORLD_DIR/env/dist/etc/modules/playerbots.conf"
     echo "worldserver.conf and playerbots.conf created."
 
-    step "9. MySQL 8.4 configuration"
-    sudo tee /etc/mysql/mysql.conf.d/acore_limits.cnf > /dev/null << 'EOF'
-[mysqld]
-bind-address            = 0.0.0.0
-mysqlx-bind-address     = 0.0.0.0
-disable_log_bin
-mysql_native_password   = ON
-EOF
-    echo "MySQL config written: /etc/mysql/mysql.conf.d/acore_limits.cnf"
-    sudo systemctl restart mysql
-    echo "MySQL restarted."
+    setup_database "${TUNING_PROFILE:-world}"
 
-    step "10. Automatisches MySQL-Tuning"
-    generate_mysql_tuning "${TUNING_PROFILE:-world}"
-    sudo mkdir -p /var/log/mysql
-    sudo touch /var/log/mysql/slow.log
-    sudo chown mysql:mysql /var/log/mysql/slow.log
-    sudo systemctl restart mysql
-
-    step "11. Create databases and MySQL user"
-    sudo mysql -u root << EOF
-CREATE USER IF NOT EXISTS 'acore'@'localhost' IDENTIFIED WITH mysql_native_password BY '$DB_PASS';
-CREATE USER IF NOT EXISTS 'acore'@'%' IDENTIFIED WITH mysql_native_password BY '$DB_PASS';
-
-GRANT ALL PRIVILEGES ON *.* TO 'acore'@'localhost' WITH GRANT OPTION;
-GRANT ALL PRIVILEGES ON *.* TO 'acore'@'%' WITH GRANT OPTION;
-
-FLUSH PRIVILEGES;
-EOF
     step "12. Final step"
     echo "The Worldserver build and database setup are complete."
     echo "Management scripts and the final 'worldmenu' start flow are handled separately."
@@ -565,65 +544,110 @@ run_bothserver() {
 
 
 ################################################################################
+# 5. MYSQL ONLY
+################################################################################
+run_mysql_only() {
+    step "MySQL installieren"
+    sudo apt update
+    sudo apt install -y mysql-server
+    sudo systemctl enable --now mysql
+
+    echo "Für welches Profil soll das MySQL-Tuning berechnet werden?"
+    echo "  1) Auth"
+    echo "  2) World"
+    echo "  3) Both"
+    local profile_choice
+    read -rp "Profil [1-3]: " profile_choice
+    case "$profile_choice" in
+        1) TUNING_PROFILE=auth ;;
+        2) TUNING_PROFILE=world ;;
+        3) TUNING_PROFILE=both ;;
+        *) warn "Ungültige Auswahl."; exit 1 ;;
+    esac
+
+    collect_database_password
+    setup_database "$TUNING_PROFILE"
+    unset DB_PASS
+    step "Final step"
+    echo "MySQL wurde installiert und eingerichtet."
+}
+
+################################################################################
 # MAIN MENU
 ################################################################################
 main() {
     require_root_or_sudo
 
-    echo ""
-    echo ""
-    echo -e "${CYAN}################################################################################${NC}"
-    echo -e "${CYAN}#  AZEROTHCORE - COMBINED INSTALL SCRIPT                                      #${NC}"
-    echo -e "${CYAN}################################################################################${NC}"
-    echo ""
-    echo "  1) 🧱  Basic System   (Debian base setup, security, Fail2Ban)"
-    echo "  2) 🔐  Authserver     (Auth & MySQL 8.4 database server - build only)"
-    echo "  3) 🌍  Worldserver    (Worldserver incl. Playerbots - build only)"
-    echo "  4) 🔗  Bothserver     (Auth + World auf einer gemeinsamen LXC)"
-    echo "  5) 🛠️  Control        (eigene Auth-/Worldserver-Verwaltung installieren)"
-    echo ""
-    warn "Hinweis: Punkt 1 zuerst abschließen. Punkt 5 folgt nach dem Server-Build."
-    echo ""
-    read -rp "Choice [1-5]: " choice
+    while true; do
+        echo ""
+        echo ""
+        echo -e "${CYAN}################################################################################${NC}"
+        echo -e "${CYAN}#  AZEROTHCORE - COMBINED INSTALL SCRIPT                                      #${NC}"
+        echo -e "${CYAN}################################################################################${NC}"
+        echo ""
+        hint "Hinweis: Punkt 1 zuerst abschließen. Punkt 5 folgt nach dem Server-Build."
+        echo ""
+        echo "  1) 🧱  Basic System   (Debian base setup, security, Fail2Ban)"
+        echo "  2) 🔐  Authserver     (Auth & MySQL 8.4 database server - build only)"
+        echo "  3) 🌍  Worldserver    (Worldserver incl. Playerbots - build only)"
+        echo "  4) 🔗  Bothserver     (Auth + World auf einer gemeinsamen LXC)"
+        echo "  5) 🛠️  Control        (eigene Auth-/Worldserver-Verwaltung installieren)"
+        echo "  6) 🗄️  MySQL          (nur MySQL-Datenbank installieren und einrichten)"
+        echo "  0) 🚪  Beenden"
+        echo ""
+        read -rp "Choice [0-6]: " choice
 
-    case "$choice" in
-        2|3|4)
-            confirm "Wurde Installpunkt 1 (Basic System) vollständig abgeschlossen?"
-            ;;
-    esac
+        case "$choice" in
+            2|3|4)
+                confirm "Wurde Installpunkt 1 (Basic System) vollständig abgeschlossen?"
+                ;;
+        esac
 
-    case "$choice" in
-        1)
-            run_basic_system
-            ;;
-        2)
-            collect_auth_inputs
-            collect_database_password
-            run_authserver
-            ;;
-        3)
-            collect_world_inputs
-            collect_database_password
-            run_worldserver
-            ;;
-        4)
-            collect_auth_inputs
-            collect_world_inputs
-            collect_database_password
-            run_bothserver
-            ;;
-        5)
-            step "5. AzerothCore Control installieren"
-            confirm "Wurde der benötigte Auth- oder Worldserver bereits installiert und gebaut?"
-            bash "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/Control/install.sh"
-            ;;
-        *) warn "Invalid choice."; exit 1 ;;
-    esac
+        case "$choice" in
+            0)
+                break
+                ;;
+            1)
+                run_basic_system
+                ;;
+            2)
+                collect_auth_inputs
+                collect_database_password
+                ask_install_control
+                run_authserver
+                ;;
+            3)
+                collect_world_inputs
+                collect_database_password
+                ask_install_control
+                run_worldserver
+                ;;
+            4)
+                collect_auth_inputs
+                collect_world_inputs
+                collect_database_password
+                ask_install_control
+                run_bothserver
+                ;;
+            5)
+                step "5. AzerothCore Control installieren"
+                confirm "Wurde der benötigte Auth- oder Worldserver bereits installiert und gebaut?"
+                bash "$SCRIPT_DIR/Control/install.sh"
+                ;;
+            6)
+                run_mysql_only
+                ;;
+            *)
+                warn "Invalid choice."
+                continue
+                ;;
+        esac
 
-    unset DB_PASS
+        unset DB_PASS
 
-    echo ""
-    echo -e "${GREEN}DONE.${NC}"
+        echo ""
+        echo -e "${GREEN}DONE.${NC}"
+    done
 }
 
 main "$@"
