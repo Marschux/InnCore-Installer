@@ -7,28 +7,120 @@ CONTROL_CONFIG="${CONTROL_CONFIG:-$(dirname "${BASH_SOURCE[0]}")/control.conf}"
 source "$CONTROL_CONFIG"
 
 RESET='\033[0m'; BOLD='\033[1m'; DIM='\033[2m'
-CYAN='\033[0;36m'; GREEN='\033[0;32m'; RED='\033[0;31m'; YELLOW='\033[1;33m'; WHITE='\033[1;37m'; NC="$RESET"
+CYAN='\033[0;36m'; GREEN='\033[0;32m'; RED='\033[0;31m'; YELLOW='\033[1;33m'
+BLUE='\033[1;34m'; WHITE='\033[1;37m'
+GRAY='\033[1;30m'; PURPLE='\033[38;5;141m'; TEAL='\033[38;5;44m'; GOLD='\033[38;5;220m'
+NC="$RESET"
 
-menu_title() {
-    local icon="$1" title="$2" process="$3" session="${4:-}" heading heading_line
-    heading="${icon} ${title}"
-    printf -v heading_line '| %-76s |' "$heading"
-    clear
-    printf '%b\n' "${CYAN}+------------------------------------------------------------------------------+${RESET}"
-    printf '%b\n' "${CYAN}${heading_line}${RESET}"
-    printf '%b\n' "${CYAN}+------------------------------------------------------------------------------+${RESET}"
-    server_status "$process" "$session"
+COLOR_SERVER="$CYAN"
+COLOR_LOGS="$GRAY"
+COLOR_BUILD="$BLUE"
+COLOR_CONFIG="$GOLD"
+COLOR_MANAGE="$PURPLE"
+COLOR_TOOLS="$TEAL"
+COLOR_EXIT="$RED"
+
+# The AzerothCore source/build trees and the tmux session belong to SERVER_USER.
+# Run as root and git refuses the checkout ("dubious ownership") and tmux shows
+# the server as OFFLINE. Re-exec the menu as the owner once, up front.
+reexec_as_owner() {
+    if [ "$(id -u)" -eq 0 ] && [ -n "${SERVER_USER:-}" ] && [ "$SERVER_USER" != root ]; then
+        exec sudo -u "$SERVER_USER" -- "$@"
+    fi
+}
+
+# Run a single command as the owner (used for the rare root-invoked path).
+run_as_owner() {
+    if [ "$(id -u)" -eq 0 ] && [ -n "${SERVER_USER:-}" ] && [ "$SERVER_USER" != root ]; then
+        sudo -u "$SERVER_USER" -- "$@"
+    else
+        "$@"
+    fi
+}
+
+git_owner() { run_as_owner git -C "$ACORE_DIR" "$@"; }
+
+current_branch() {
+    local b
+    b="$(git_owner rev-parse --abbrev-ref HEAD 2>/dev/null)"
+    { [ -n "$b" ] && [ "$b" != HEAD ] && echo "$b"; } || echo unknown
+}
+
+wait_for_user() {
     echo ""
+    echo -e "${CYAN}↩  Press [ENTER] to return to the menu...${RESET}"
+    read -r _ || true
 }
 
 menu_section() {
     echo ""
-    echo -e "${YELLOW}${BOLD}--- $1 ---${RESET}"
+    echo -e "${1}${BOLD}${2}${RESET}"
 }
 
-pause_control() {
-    echo ""
-    read -rp "Press ENTER to return... " _
+box_title() {
+    local t="$1" w=74 pad rule
+    rule="$(printf '═%.0s' $(seq 1 "$w"))"
+    pad=$(( (w - ${#t}) / 2 ))
+    printf "${CYAN}╔%s╗${RESET}\n" "$rule"
+    printf "${CYAN}║${RESET}%*s${BOLD}${WHITE}%s${RESET}%*s${CYAN}║${RESET}\n" "$pad" "" "$t" "$((w - pad - ${#t}))" ""
+    printf "${CYAN}╚%s╝${RESET}\n" "$rule"
+}
+
+# Repaint without a visible clear: cursor home, print the frame with
+# erase-to-end-of-line on every row, then erase everything below. Falls back to
+# a full clear when the frame no longer fits on screen.
+draw_menu() {
+    local render_fn="$1" frame term_rows frame_rows
+    frame="$($render_fn)"
+    term_rows="$(tput lines 2>/dev/null || echo 0)"
+    frame_rows="$(printf '%s\n' "$frame" | wc -l)"
+    if [ "$term_rows" -gt 0 ] && [ $((frame_rows + 2)) -ge "$term_rows" ]; then
+        clear
+        printf '%s\n' "$frame"
+        return
+    fi
+    frame="${frame//$'\n'/$'\033[K'$'\n'}"
+    printf '\033[H%s\033[K\n\033[0J' "$frame"
+}
+
+run_step() {   # run_step "<script or function>" [args...]
+    clear
+    "$@"
+    wait_for_user
+}
+
+# Fixed-width label so the status block lines up regardless of icon/word width.
+status_row() { printf ' %s  %-15s' "$1" "$2"; }
+
+status_dot() {   # status_dot <process-name> <session>
+    local process="$1" session="$2" label
+    label="${process^}:"
+    if tmux has-session -t "$session" 2>/dev/null; then
+        if pgrep -x "$process" >/dev/null 2>&1; then
+            echo -e "$(status_row 🟢 "$label")${GREEN}${BOLD}ONLINE${RESET}"
+        else
+            echo -e "$(status_row 🟡 "$label")${YELLOW}tmux active, process missing${RESET}"
+        fi
+    else
+        if pgrep -x "$process" >/dev/null 2>&1; then
+            echo -e "$(status_row 🟠 "$label")${YELLOW}process running, tmux missing${RESET}"
+        else
+            echo -e "$(status_row 🔴 "$label")${RED}${BOLD}OFFLINE${RESET}"
+        fi
+    fi
+}
+
+autostart_dot() {   # autostart_dot <service-name>
+    local svc="$1"
+    if [ -z "$svc" ]; then
+        echo -e "$(status_row 🚀 "Autostart:")${RED}service name missing${RESET}"
+    elif systemctl is-enabled "$svc" >/dev/null 2>&1; then
+        echo -e "$(status_row 🚀 "Autostart:")${GREEN}ENABLED${RESET}"
+    elif [ -f "/etc/systemd/system/$svc" ]; then
+        echo -e "$(status_row 🚀 "Autostart:")${YELLOW}service exists, disabled${RESET}"
+    else
+        echo -e "$(status_row 🚀 "Autostart:")${RED}DISABLED${RESET}"
+    fi
 }
 
 require_path() {
@@ -134,5 +226,5 @@ server_status() {
 safe_build() {
     local dir="$1"
     require_path "$dir" || return 1
-    (cd "$dir" && make -j "$(nproc)" && make install)
+    run_as_owner bash -c "cd '$dir' && make -j \"\$(nproc)\" && make install"
 }

@@ -4,14 +4,11 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/common.sh"
 
-update_control() {
-    require_path "$CONTROL_SOURCE_DIR/common.sh"
-    sudo install -m 0755 "$CONTROL_SOURCE_DIR/common.sh" "$SCRIPT_DIR/common.sh"
-    sudo install -m 0755 "$CONTROL_SOURCE_DIR/auth-menu.sh" "$SCRIPT_DIR/auth-menu.sh"
-    sudo install -m 0755 "$CONTROL_SOURCE_DIR/clean-build.sh" "$SCRIPT_DIR/clean-build.sh"
-    sudo chown "$SERVER_USER:$SERVER_USER" "$SCRIPT_DIR"/*.sh
-    echo "Auth Control scripts updated."
-}
+# git and the tmux session belong to SERVER_USER - re-run as them if invoked as root.
+reexec_as_owner "$0" "$@"
+
+# Interactive loop: a single failing status probe must not kill the menu.
+set +e
 
 AUTH_ENGINE="${AUTH_ENGINE:-$ACORE_DIR/apps/startup-scripts/src/run-engine}"
 AUTH_BINARY="${AUTH_BINARY:-$ACORE_DIR/env/dist/bin/authserver}"
@@ -19,29 +16,17 @@ AUTH_CONF="${AUTH_CONF:-$ACORE_DIR/env/dist/etc/authserver.conf}"
 AUTH_SESSION="${AUTH_SESSION:-auth-session}"
 AUTH_SERVICE_NAME="${AUTH_SERVICE_NAME:-azerothcore-auth.service}"
 
-start_auth() {
-    server_start authserver "$AUTH_ENGINE" "$AUTH_BINARY" "$AUTH_CONF" "$AUTH_SESSION"
-    return $?
-    require_path "$AUTH_ENGINE" || return 0
-    require_path "$AUTH_BINARY" || return 0
-    require_path "$AUTH_CONF" || return 0
-    if tmux has-session -t "$AUTH_SESSION" 2>/dev/null; then echo "Authserver is already running."; return; fi
-    tmux new-session -d -s "$AUTH_SESSION" "cd '$ACORE_DIR' && '$AUTH_ENGINE' start '$AUTH_BINARY' --server-config '$AUTH_CONF' --session-manager none"
-    echo "Authserver started."
+update_control() {
+    require_path "$CONTROL_SOURCE_DIR/common.sh" || return 1
+    sudo install -m 0755 "$CONTROL_SOURCE_DIR/common.sh" "$SCRIPT_DIR/common.sh"
+    sudo install -m 0755 "$CONTROL_SOURCE_DIR/auth-menu.sh" "$SCRIPT_DIR/auth-menu.sh"
+    sudo install -m 0755 "$CONTROL_SOURCE_DIR/clean-build.sh" "$SCRIPT_DIR/clean-build.sh"
+    sudo chown "$SERVER_USER:$SERVER_USER" "$SCRIPT_DIR"/*.sh
+    echo "Auth Control scripts updated."
 }
 
-stop_auth() {
-    server_stop authserver "$AUTH_SESSION" "" 120
-    return $?
-    if pgrep -x authserver >/dev/null 2>&1; then
-        pkill -TERM -x authserver
-        for _ in $(seq 1 60); do pgrep -x authserver >/dev/null 2>&1 || break; sleep 1; done
-    fi
-    tmux kill-session -t "$AUTH_SESSION" 2>/dev/null || true
-    pgrep -x authserver >/dev/null 2>&1 && { echo "Authserver not responding; no automatic KILL."; return 1; }
-    echo "Authserver stopped."
-}
-
+start_auth()   { server_start authserver "$AUTH_ENGINE" "$AUTH_BINARY" "$AUTH_CONF" "$AUTH_SESSION"; }
+stop_auth()    { server_stop authserver "$AUTH_SESSION" "" 120; }
 restart_auth() { server_restart authserver "$AUTH_ENGINE" "$AUTH_BINARY" "$AUTH_CONF" "$AUTH_SESSION" "" 120; }
 
 autostart_auth() {
@@ -72,44 +57,135 @@ EOF
 
 account_menu() {
     while true; do
-        clear; echo "=== Account management ==="; echo "1) List accounts"; echo "2) Delete account"; echo "0) Back"; read -rp "Choice: " choice
+        clear
+        echo -e "${COLOR_MANAGE}${BOLD}👤  ACCOUNT MANAGEMENT${RESET}"
+        echo "----------------------------------------------------------------------------"
+        echo -e "  ${COLOR_MANAGE}[1]${RESET}  List accounts"
+        echo -e "  ${COLOR_MANAGE}[2]${RESET}  Delete account"
+        echo -e "  ${COLOR_MANAGE}[0]${RESET}  Back"
+        echo "----------------------------------------------------------------------------"
+        read -rp "🔹  Choice [0-2]: " choice
         case "$choice" in
-            1) mysql_auth --batch --table -e 'SELECT id, username, expansion, locked FROM account ORDER BY id;' ;;
-            2) read -rp "Account ID to delete: " id; [[ "$id" =~ ^[0-9]+$ ]] || { echo "Invalid ID."; pause_control; continue; }; read -rp "Type DELETE to confirm: " confirm; [ "$confirm" = DELETE ] && mysql_auth -e "DELETE FROM account WHERE id=$id; DELETE FROM account_access WHERE id=$id;" ;;
+            1) mysql_auth --batch --table -e 'SELECT id, username, expansion, locked FROM account ORDER BY id;'; wait_for_user ;;
+            2) read -rp "Account ID to delete: " id
+               if [[ "$id" =~ ^[0-9]+$ ]]; then
+                   read -rp "Type DELETE to confirm: " confirm
+                   [ "$confirm" = DELETE ] && mysql_auth -e "DELETE FROM account WHERE id=$id; DELETE FROM account_access WHERE id=$id;" && echo "Account deleted."
+               else
+                   echo "Invalid ID."
+               fi
+               wait_for_user ;;
             0) return ;;
+            *) echo "Invalid option."; sleep 1 ;;
         esac
-        pause_control
     done
 }
 
 realm_menu() {
     while true; do
-        clear; echo "=== Realm management ==="; echo "1) List realms"; echo "2) Change realm address"; echo "0) Back"; read -rp "Choice: " choice
+        clear
+        echo -e "${COLOR_MANAGE}${BOLD}🌍  REALM MANAGEMENT${RESET}"
+        echo "----------------------------------------------------------------------------"
+        echo -e "  ${COLOR_MANAGE}[1]${RESET}  List realms"
+        echo -e "  ${COLOR_MANAGE}[2]${RESET}  Change realm address"
+        echo -e "  ${COLOR_MANAGE}[0]${RESET}  Back"
+        echo "----------------------------------------------------------------------------"
+        read -rp "🔹  Choice [0-2]: " choice
         case "$choice" in
-            1) mysql_auth --batch --table -e 'SELECT id, name, address, port, flag, gamebuild FROM realmlist ORDER BY id;' ;;
-            2) read -rp "Realm ID: " id; read -rp "New address: " address; [[ "$id" =~ ^[0-9]+$ && "$address" =~ ^[A-Za-z0-9._-]+$ ]] || { echo "Invalid input."; pause_control; continue; }; mysql_auth -e "UPDATE realmlist SET address='$address', localAddress='$address' WHERE id=$id;" ;;
+            1) mysql_auth --batch --table -e 'SELECT id, name, address, port, flag, gamebuild FROM realmlist ORDER BY id;'; wait_for_user ;;
+            2) read -rp "Realm ID: " id; read -rp "New address: " address
+               if [[ "$id" =~ ^[0-9]+$ && "$address" =~ ^[A-Za-z0-9._-]+$ ]]; then
+                   mysql_auth -e "UPDATE realmlist SET address='$address', localAddress='$address' WHERE id=$id;" && echo "Realm updated."
+               else
+                   echo "Invalid input."
+               fi
+               wait_for_user ;;
             0) return ;;
+            *) echo "Invalid option."; sleep 1 ;;
         esac
-        pause_control
     done
 }
 
-menu() {
+build_menu() {
     while true; do
-        menu_title "🔐" "AzerothCore Authserver Control" authserver "$AUTH_SESSION"
-        menu_section "Server"
-        echo "  1) ▶️  Start"; echo "  2) ⏹️  Stop"; echo "  3) 🔄  Restart"; echo "  4) 📊  Status"; echo "  5) ⚙️  Autostart"
-        menu_section "Maintenance"
-        echo "  6) ⬇️  Update source"; echo "  7) 🔨  Build and install"; echo "  8) 🧹  Clean build"; echo "  9) 📝  Open authserver.conf"
-        menu_section "Management"
-        echo " 10) 👤  Account management"; echo " 11) 🌐  Realm management"; echo " 12) 🔄  Update Control scripts"; echo "  0) 🚪  Exit"
-        echo ""; read -rp "Choice [0-12]: " choice
+        clear
+        echo -e "${COLOR_BUILD}${BOLD}🛠️  BUILD TOOLS${RESET}"
+        echo "----------------------------------------------------------------------------"
+        echo -e "  ${COLOR_BUILD}[1]${RESET}  Pull git updates"
+        echo -e "  ${COLOR_BUILD}[2]${RESET}  Build and install"
+        echo -e "  ${COLOR_BUILD}[3]${RESET}  Clean build directory"
+        echo -e "  ${COLOR_BUILD}[0]${RESET}  Back"
+        echo "----------------------------------------------------------------------------"
+        read -rp "🔹  Choice [0-3]: " choice
         case "$choice" in
-            1) start_auth ;; 2) stop_auth ;; 3) restart_auth ;; 4) server_status authserver "$AUTH_SESSION" ;; 5) autostart_auth ;; 6) git -C "$ACORE_DIR" pull --ff-only ;; 7) safe_build "$ACORE_DIR/build" ;; 8) "$SCRIPT_DIR/clean-build.sh" "$ACORE_DIR" ;; 9) nano "$AUTH_CONF" ;; 10) account_menu ;; 11) realm_menu ;; 12) update_control ;; 0) return ;; esac
-        pause_control
+            1) run_step git_owner pull --ff-only ;;
+            2) run_step safe_build "$ACORE_DIR/build" ;;
+            3) run_step "$SCRIPT_DIR/clean-build.sh" "$ACORE_DIR" ;;
+            0) return ;;
+            *) echo "Invalid option."; sleep 1 ;;
+        esac
+    done
+}
+
+render_menu() {
+    box_title "AZEROTHCORE - AUTHSERVER CONTROL"
+    status_dot authserver "$AUTH_SESSION"
+    autostart_dot "$AUTH_SERVICE_NAME"
+    echo -e "$(status_row 📂 "Session:")${CYAN}${AUTH_SESSION}${RESET}"
+    echo -e "$(status_row 🌿 "Branch:")${CYAN}$(current_branch)${RESET}"
+    echo "----------------------------------------------------------------------------"
+
+    menu_section "$COLOR_SERVER" "⚙️  SERVER CONTROL"
+    echo -e "  ${COLOR_SERVER}[1]${RESET}  🚀  Start server          ${COLOR_SERVER}[2]${RESET}  🛑  Stop server"
+    echo -e "  ${COLOR_SERVER}[3]${RESET}  🔄  Restart server        ${COLOR_SERVER}[4]${RESET}  📊  Server status"
+
+    menu_section "$COLOR_LOGS" "📄  LOGS & CONSOLE"
+    echo -e "  ${COLOR_LOGS}[5]${RESET}  🖥️  Auth console          ${COLOR_LOGS}[6]${RESET}  📚  Tmux scrollback"
+
+    menu_section "$COLOR_TOOLS" "🗄️  TOOLS"
+    echo -e "  ${COLOR_TOOLS}[7]${RESET}  🚀  Autostart             ${COLOR_TOOLS}[8]${RESET}  🛠️  Build tools"
+    echo -e "  ${COLOR_TOOLS}[9]${RESET}  👤  Account management    ${COLOR_TOOLS}[10]${RESET} 🌍  Realm management"
+
+    menu_section "$COLOR_CONFIG" "📝  CONFIG & MAINTENANCE"
+    echo -e "  ${COLOR_CONFIG}[11]${RESET} ✏️  Edit authserver.conf  ${COLOR_CONFIG}[12]${RESET} 🔄  Update Control scripts"
+
+    menu_section "$COLOR_EXIT" "⏻  EXIT"
+    echo -e "  ${COLOR_EXIT}[0]${RESET}  🚪  Exit menu"
+    echo ""
+    echo -e "${CYAN}════════════════════════════════════════════════════════════════════════════${RESET}"
+}
+
+menu() {
+    clear
+    while true; do
+        draw_menu render_menu
+        echo ""
+        read -t 60 -rp "🔹  Select an option (0-12): " choice; rc=$?
+        [ "$rc" -gt 128 ] && continue
+        case "$choice" in
+            1) run_step start_auth ;;
+            2) run_step stop_auth ;;
+            3) run_step restart_auth ;;
+            4) run_step server_status authserver "$AUTH_SESSION" ;;
+            5) clear; tmux attach -t "$AUTH_SESSION" 2>/dev/null || { echo "No active authserver tmux session."; wait_for_user; } ;;
+            6) clear; tmux capture-pane -S -100000 -t "$AUTH_SESSION" -p 2>/dev/null || echo "No scrollback available."; wait_for_user ;;
+            7) run_step autostart_auth ;;
+            8) build_menu ;;
+            9) account_menu ;;
+            10) realm_menu ;;
+            11) "${EDITOR:-nano}" "$AUTH_CONF" ;;
+            12) run_step update_control ;;
+            0) clear; echo -e "${GREEN}👋  Authserver menu closed.${RESET}"; exit 0 ;;
+            *) echo "Invalid option."; sleep 1 ;;
+        esac
     done
 }
 
 case "${1:-menu}" in
-    start) start_auth ;; stop) stop_auth ;; restart) restart_auth ;; status) server_status authserver "$AUTH_SESSION" ;; menu) menu ;; *) echo "Usage: $0 [menu|start|stop|restart|status]"; exit 1 ;;
+    start) start_auth ;;
+    stop) stop_auth ;;
+    restart) restart_auth ;;
+    status) server_status authserver "$AUTH_SESSION" ;;
+    menu) menu ;;
+    *) echo "Usage: $0 [menu|start|stop|restart|status]"; exit 1 ;;
 esac
