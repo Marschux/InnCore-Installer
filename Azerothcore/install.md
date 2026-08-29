@@ -40,51 +40,30 @@ cd /opt/wowserver-install/Azerothcore
   deliberately not prescribed and must be added after the base system.
 
 
-## Intentionally not part of the script
+## First start via `authmenu` / `worldmenu`
 
-**Start flow via `authmenu` / `worldmenu`** (after 5/6/7)
+The Control menus are offered at the end of items 2/3/4 (or install later via
+item 5). Run `authmenu` / `worldmenu` (as root or `sudo`; the menu re-execs as
+the server owner). The initial bring-up is not automated:
 
-`source ~/.bashrc` (or re-login) so the alias is active, then:
+### Authserver
 
-`authmenu`:
-```
-8        Pull Git updates
-8        Build authserver
-8        Clean build directory
-15       Edit values_auth.conf
-16       Apply auth config patch and restart
-5        Accept build database (acore_auth), going out with CTRL+B then D
-9        Apply Two-Side RBAC permissions
-9        Increment change for Bots
+1. `[12] Config` → `[1]` edit `values_auth.conf`: set the real password in
+   `LoginDatabaseInfo` → back → `[2]` apply → answer restart **yes**.
+2. `[6] Auth console`: the server asks to create `acore_auth` → **yes**, wait
+   for "Added realm ...", then detach with `Ctrl-B` then `D`.
+3. Optional: `[8] Autostart` → enable.
 
------------------ Snapshot -----------------
+### Worldserver
 
-7        Enable authserver autostart
-17       Manage realmlist & MOTD
-18       Open account manager
-
-```
-
-`worldmenu`:
-```
-
-The Control installation is offered optionally at the end of install items
-2, 3 and 4. Menu item 5 remains available as a later option.
-12       Pull Git updates
-12       Build worldserver
-12       Clean build directory
-19       Edit values_world.conf
-20       Patch worldserver.conf, do NOT restart yet
-23       Edit values_playerbots.conf
-24       Patch playerbots.conf, do NOT restart yet
-
------------------ Snapshot -----------------
-
-10       Enable autostart
-11       Enable daily restart
-1        Start Server
-9        Open Tmux Session and confirm Database creation, wait for playerbots creation
-5        Kill Server, when creating characters (stucking)
-1        Start Server
-9        Login Tmux and look at buildup bots
-```
+1. `[14] Config` → edit + apply `values_world.conf` (`[1]`/`[2]`) and
+   `values_playerbots.conf` (`[3]`/`[4]`). Point the three `*DatabaseInfo`
+   lines at the auth LXC / real password; `LoginDatabaseInfo` is **not**
+   127.0.0.1 on a split setup.
+2. `[1] Start server`, then `[8] World console`: confirm creating
+   `acore_world` / `acore_characters` / `acore_playerbots`.
+3. **Known Playerbots quirk:** the first start hangs at
+   `Waiting for N characters loading into database`. Detach, then
+   `[3] Kill server` (type `KILL`) → `[1] Start server` again. The second
+   start finishes the character creation and comes up normally.
+4. Optional: `[10] Autostart`, `[11] Daily restart timer`.

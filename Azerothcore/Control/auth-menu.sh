@@ -50,6 +50,9 @@ ExecStart=$AUTH_MENU start
 ExecStop=$AUTH_MENU stop
 RemainAfterExit=yes
 KillMode=mixed
+# worldserver/authserver try to raise their scheduler priority; without this
+# they log "Can't set process priority class" (harmless, but noisy).
+AmbientCapabilities=CAP_SYS_NICE
 TimeoutStopSec=120
 
 [Install]

@@ -29,19 +29,14 @@ Aufgefallen beim Testbench-Durchlauf.
       Reboot-Test: jeder Server jetzt in eigener cgroup, `systemctl stop
       azerothcore-world` lässt authserver laufen.
 
-## Offen — sonstiges
+- [x] Priority-Warnung → `AmbientCapabilities=CAP_SYS_NICE` in beiden
+      Autostart-Units (greift bei neu geschriebenen Units).
+- [x] values_*.conf gegen AC-Validatoren: authserver.conf + playerbots.conf
+      sauber, worldserver.conf nur `CharactersPerRealm` (gefixt). AC-Startup
+      validiert selbst und meldet — reicht als Prüfung.
+- [x] mod-playerbots-1.-Start-Hänger → in install.md dokumentiert (Kill → Start).
 
-- [ ] worldserver Start als non-root admin: "Can't set process priority class,
-      Permission denied". Kosmetisch. Ggf. `AmbientCapabilities=CAP_SYS_NICE`
-      in der Unit oder in der Doku erwähnen.
-
-- [ ] values_*.conf einmal komplett gegen AC-Config-Validatoren / .dist-Defaults
-      gegenprüfen (nicht nur Key-Existenz). `CharactersPerRealm` war so ein Fall.
-
-- [ ] mod-playerbots hängt reproduzierbar beim 1. Start ("Waiting for N
-      characters loading into database"). Workaround im Menü: `[3] Kill` →
-      `[1] Start`. Bekanntes AC/Playerbots-Verhalten (testing-notes). In
-      install.md / Guide dokumentieren.
+## Offen
 
 - [ ] `preseed_mysql_apt` auf frischer Box gegentesten (ob der whiptail-Dialog
-      dann wirklich wegbleibt).
+      dann wirklich wegbleibt). Braucht kompletten Reset + Rebuild.
