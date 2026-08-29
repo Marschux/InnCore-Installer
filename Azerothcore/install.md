@@ -33,6 +33,9 @@ cd /opt/wowserver-install/Azerothcore
 ## Prerequisites
 
 - Fresh Debian 13 LXC, root or passwordless `sudo`
+- Disk: Auth ~20 GB, World ~45 GB (RelWithDebInfo build tree + client data),
+  Both on one LXC ~60 GB. The script checks free space before each build and
+  warns if it is short.
 - 2/3/4 require Basic System (1) to have run first
 - Install item 1 collects the base data at the start and then sets up the
   Debian base system, the administrator, the dynamic MOTD, SSH and Fail2Ban.

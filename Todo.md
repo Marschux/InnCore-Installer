@@ -46,3 +46,10 @@ Aufgefallen beim Testbench-Durchlauf.
       `/etc/environment` schreiben (PAM/pam_env liest das bei jedem `sudo`),
       danach wieder entfernen. Manuell im Dialog: Taste `O` (springt auf "Ok")
       dann Enter.
+
+## Erledigt (Forts.)
+
+- [x] Kein Disk-Vorab-Check → `check_disk()` vor Auth (~20 GB) / World (~45 GB)
+      Build; warnt + `confirm` bei zu wenig Platz. Fresh-Test scheiterte an einer
+      30-GB-Box mit "No space left on device" mitten im world make (build/ = 13 GB
+      RelWithDebInfo). install.md: Disk-Anforderung dokumentiert.

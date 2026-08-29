@@ -62,6 +62,20 @@ hint() {
 # opens an interactive whiptail dialog on (re)configuration. acore.sh runs its
 # own inner sudo, so DEBIAN_FRONTEND from here does not reach it - preseed the
 # answers instead. mysql-8.4-lts (not 9.x, which dropped mysql_native_password).
+# Abort early instead of failing 20 minutes into a build with "No space left on
+# device". need_gb is a generous estimate: source + RelWithDebInfo build tree +
+# installed binaries (+ client data for world).
+check_disk() {
+    local dir="$1" need_gb="$2" avail_gb parent
+    parent="$dir"; while [ ! -d "$parent" ]; do parent="$(dirname "$parent")"; done
+    avail_gb="$(df -BG --output=avail "$parent" | tail -1 | tr -dc '0-9')"
+    echo "Free space on $(df --output=target "$parent" | tail -1): ${avail_gb} GB (need ~${need_gb} GB)"
+    if [ "$avail_gb" -lt "$need_gb" ]; then
+        warn "Not enough free disk space for this build."
+        confirm "Continue anyway? The build will likely fail partway through."
+    fi
+}
+
 preseed_mysql_apt() {
     sudo debconf-set-selections <<'EOF'
 mysql-apt-config mysql-apt-config/select-server select mysql-8.4-lts
@@ -569,6 +583,7 @@ EOF
 ################################################################################
 run_authserver() {
     step "1. Update system packages"
+    check_disk "$AUTH_DIR" 20
     sudo apt update && sudo apt full-upgrade -y
 
     step "2. Clone source code"
@@ -621,6 +636,7 @@ run_authserver() {
 ################################################################################
 run_worldserver() {
     step "1. Update system packages"
+    check_disk "$WORLD_DIR" 45
     sudo apt update && sudo apt full-upgrade -y
 
     step "2. Clone source code and Playerbots module"
