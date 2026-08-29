@@ -29,8 +29,11 @@ Aufgefallen beim Testbench-Durchlauf.
       Reboot-Test: jeder Server jetzt in eigener cgroup, `systemctl stop
       azerothcore-world` lässt authserver laufen.
 
-- [x] Priority-Warnung → `AmbientCapabilities=CAP_SYS_NICE` in beiden
-      Autostart-Units (greift bei neu geschriebenen Units).
+- [~] Priority-Warnung: `AmbientCapabilities=CAP_SYS_NICE` gesetzt (worldserver
+      hat CapAmb 0x800000 verifiziert), Warnung kommt aber TROTZDEM. worldserver
+      versucht wohl RT-Scheduling (braucht zusätzlich `LimitRTPRIO=` in der Unit)
+      oder negativen nice (braucht `LimitNICE=`). Kosmetisch — läuft normal
+      weiter. Alternativ `Process.Priority = 0` in values_world.conf.
 - [x] values_*.conf gegen AC-Validatoren: authserver.conf + playerbots.conf
       sauber, worldserver.conf nur `CharactersPerRealm` (gefixt). AC-Startup
       validiert selbst und meldet — reicht als Prüfung.
