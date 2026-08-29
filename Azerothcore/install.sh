@@ -59,10 +59,23 @@ hint() {
 }
 
 ask_install_control() {
+    local role="$1"
     read -rp "Optionally install the Control menu now? [y/N]: " control_choice
     case "$control_choice" in
         y|Y|j|J) INSTALL_CONTROL=1 ;;
-        *) INSTALL_CONTROL=0 ;;
+        *) INSTALL_CONTROL=0; return ;;
+    esac
+    case "$role" in
+        auth|both)
+            read -rp "Installation path for auth Control [/opt/acore-auth-control]: " CONTROL_AUTH_TARGET
+            CONTROL_AUTH_TARGET=${CONTROL_AUTH_TARGET:-/opt/acore-auth-control}
+            ;;
+    esac
+    case "$role" in
+        world|both)
+            read -rp "Installation path for world Control [/opt/acore-world-control]: " CONTROL_WORLD_TARGET
+            CONTROL_WORLD_TARGET=${CONTROL_WORLD_TARGET:-/opt/acore-world-control}
+            ;;
     esac
 }
 
@@ -73,10 +86,12 @@ offer_control_installation() {
         return
     fi
     step "Install Control menu"
+    # CONTROL_ASSUME_DEFAULTS=1 makes Control/install.sh non-interactive: all
+    # answers were already collected up front, so it runs unattended here.
     case "${CONTROL_ROLE:-}" in
-        auth) CONTROL_ACTION=install CONTROL_ROLE=auth CONTROL_AUTH_DIR="$AUTH_DIR" CONTROL_AUTH_OWNER="$AUTH_OWNER" bash "$SCRIPT_DIR/Control/install.sh" ;;
-        world) CONTROL_ACTION=install CONTROL_ROLE=world CONTROL_WORLD_DIR="$WORLD_DIR" CONTROL_WORLD_OWNER="$WORLD_OWNER" bash "$SCRIPT_DIR/Control/install.sh" ;;
-        both) CONTROL_ACTION=install CONTROL_ROLE=both CONTROL_AUTH_DIR="$AUTH_DIR" CONTROL_AUTH_OWNER="$AUTH_OWNER" CONTROL_WORLD_DIR="$WORLD_DIR" CONTROL_WORLD_OWNER="$WORLD_OWNER" bash "$SCRIPT_DIR/Control/install.sh" ;;
+        auth) CONTROL_ASSUME_DEFAULTS=1 CONTROL_ACTION=install CONTROL_ROLE=auth CONTROL_AUTH_TARGET="${CONTROL_AUTH_TARGET:-}" CONTROL_AUTH_DIR="$AUTH_DIR" CONTROL_AUTH_OWNER="$AUTH_OWNER" bash "$SCRIPT_DIR/Control/install.sh" ;;
+        world) CONTROL_ASSUME_DEFAULTS=1 CONTROL_ACTION=install CONTROL_ROLE=world CONTROL_WORLD_TARGET="${CONTROL_WORLD_TARGET:-}" CONTROL_WORLD_DIR="$WORLD_DIR" CONTROL_WORLD_OWNER="$WORLD_OWNER" bash "$SCRIPT_DIR/Control/install.sh" ;;
+        both) CONTROL_ASSUME_DEFAULTS=1 CONTROL_ACTION=install CONTROL_ROLE=both CONTROL_AUTH_TARGET="${CONTROL_AUTH_TARGET:-}" CONTROL_AUTH_DIR="$AUTH_DIR" CONTROL_AUTH_OWNER="$AUTH_OWNER" CONTROL_WORLD_TARGET="${CONTROL_WORLD_TARGET:-}" CONTROL_WORLD_DIR="$WORLD_DIR" CONTROL_WORLD_OWNER="$WORLD_OWNER" bash "$SCRIPT_DIR/Control/install.sh" ;;
         *) warn "Could not determine the Control role."; return 1 ;;
     esac
 }
@@ -613,20 +628,20 @@ main() {
             2)
                 collect_auth_inputs
                 collect_database_password
-                ask_install_control
+                ask_install_control auth
                 run_authserver
                 ;;
             3)
                 collect_world_inputs
                 collect_database_password
-                ask_install_control
+                ask_install_control world
                 run_worldserver
                 ;;
             4)
                 collect_auth_inputs
                 collect_world_inputs
                 collect_database_password
-                ask_install_control
+                ask_install_control both
                 run_bothserver
                 ;;
             5)

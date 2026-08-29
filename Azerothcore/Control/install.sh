@@ -4,7 +4,13 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 GREEN='\033[0;32m'; CYAN='\033[0;36m'; YELLOW='\033[1;33m'; NC='\033[0m'
 
-ask_default() { local prompt="$1" default="$2" value; read -rp "$prompt [$default]: " value; printf '%s' "${value:-$default}"; }
+ask_default() {
+    local prompt="$1" default="$2" value
+    # Non-interactive when driven by the main installer (answers collected up front)
+    if [ "${CONTROL_ASSUME_DEFAULTS:-0}" = 1 ]; then printf '%s' "$default"; return; fi
+    read -rp "$prompt [$default]: " value
+    printf '%s' "${value:-$default}"
+}
 require_absolute() { [[ "$1" = /* && "$1" != "/" ]] || { echo "Invalid absolute path: $1"; exit 1; }; }
 
 install_role() {
