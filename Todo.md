@@ -61,7 +61,7 @@ weitere veraltete Werte).
       renummeriert (world 0-14, auth 0-12). Getestet inkl. Playerbots-Hänger.
 - [x] Leere Account/Realm-Liste → `list_table()` → „(none)".
 - [x] Warnung wenn SERVER_USER `CONTROL_SOURCE_DIR` nicht lesen kann
-      (siehe Offen #3 für die volle Lösung).
+      (siehe Offen #2 für die volle Lösung).
 - [x] Server-Tree nach Build `chown -R OWNER` — Menü kann Backups/git schreiben.
 - [x] `apply_values`: Werte verbatim schreiben (Quote-Bug bei inneren Quotes
       behoben, z.B. `Appender.Console`).
