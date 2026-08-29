@@ -20,7 +20,7 @@
 
 set -euo pipefail
 
-# Absolut aufloesen, solange das cwd noch stimmt (spaeter wird per 'cd build' gewechselt)
+# Resolve absolutely while the cwd is still correct (later steps 'cd build')
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 CYAN='\033[0;36m'
@@ -59,7 +59,7 @@ hint() {
 }
 
 ask_install_control() {
-    read -rp "Control-Menü jetzt optional installieren? [y/N]: " control_choice
+    read -rp "Optionally install the Control menu now? [y/N]: " control_choice
     case "$control_choice" in
         y|Y|j|J) INSTALL_CONTROL=1 ;;
         *) INSTALL_CONTROL=0 ;;
@@ -69,15 +69,15 @@ ask_install_control() {
 offer_control_installation() {
     [ "${SKIP_CONTROL_PROMPT:-0}" = 1 ] && return
     if [ "${INSTALL_CONTROL:-0}" != 1 ]; then
-        echo "Control-Menü wird übersprungen. Es kann später über Menüpunkt 5 installiert werden."
+        echo "Control menu skipped. It can be installed later via menu item 5."
         return
     fi
-    step "Control-Menü installieren"
+    step "Install Control menu"
     case "${CONTROL_ROLE:-}" in
         auth) CONTROL_ACTION=install CONTROL_ROLE=auth CONTROL_AUTH_DIR="$AUTH_DIR" CONTROL_AUTH_OWNER="$AUTH_OWNER" bash "$SCRIPT_DIR/Control/install.sh" ;;
         world) CONTROL_ACTION=install CONTROL_ROLE=world CONTROL_WORLD_DIR="$WORLD_DIR" CONTROL_WORLD_OWNER="$WORLD_OWNER" bash "$SCRIPT_DIR/Control/install.sh" ;;
         both) CONTROL_ACTION=install CONTROL_ROLE=both CONTROL_AUTH_DIR="$AUTH_DIR" CONTROL_AUTH_OWNER="$AUTH_OWNER" CONTROL_WORLD_DIR="$WORLD_DIR" CONTROL_WORLD_OWNER="$WORLD_OWNER" bash "$SCRIPT_DIR/Control/install.sh" ;;
-        *) warn "Control-Rolle konnte nicht bestimmt werden."; return 1 ;;
+        *) warn "Could not determine the Control role."; return 1 ;;
     esac
 }
 
@@ -94,7 +94,7 @@ require_root_or_sudo() {
 strip_existing_mysql_tuning() {
     local cnf="/etc/mysql/mysql.conf.d/mysqld.cnf"
     if [ -f "$cnf" ] && grep -q "MYSQL PERFORMANCE TUNING - AZEROTHCORE" "$cnf"; then
-        warn "Vorhandenes AzerothCore-MySQL-Tuning gefunden - der alte Block wird durch das automatisch berechnete Profil ersetzt."
+        warn "Existing AzerothCore MySQL tuning found - the old block is replaced by the automatically calculated profile."
         # Delete from the marker to end of file. A harmless leftover blank
         # line/divider comment right before it may remain - MySQL ignores both.
         sudo sed -i '/MYSQL PERFORMANCE TUNING - AZEROTHCORE/,$d' "$cnf"
@@ -140,7 +140,7 @@ generate_mysql_tuning() {
             MAX_CONNECTIONS=$((160 + CPU_CORES * 25))
             ;;
         *)
-            warn "Unbekanntes MySQL-Tuningprofil: $PROFILE"
+            warn "Unknown MySQL tuning profile: $PROFILE"
             exit 1
             ;;
     esac
@@ -172,12 +172,12 @@ generate_mysql_tuning() {
     [ "$TMP_MB" -gt $((RAM_MB / 16)) ] && TMP_MB=$((RAM_MB / 16))
     [ "$TMP_MB" -lt 32 ] && TMP_MB=32
 
-    DISK_TYPE="SSD/virtuell"
+    DISK_TYPE="SSD/virtual"
     IO_CAPACITY=1000
     IO_CAPACITY_MAX=4000
     for rotational_file in /sys/block/*/queue/rotational; do
         if [ -r "$rotational_file" ] && [ "$(cat "$rotational_file")" = "1" ]; then
-            DISK_TYPE="HDD/rotierend"
+            DISK_TYPE="HDD/rotational"
             IO_CAPACITY=200
             IO_CAPACITY_MAX=800
             break
@@ -191,8 +191,8 @@ generate_mysql_tuning() {
     sudo tee -a /etc/mysql/mysql.conf.d/mysqld.cnf > /dev/null << EOF
 
 # ==================================================
-# MYSQL PERFORMANCE TUNING - AZEROTHCORE ($PROFILE, automatisch)
-# Hardware: $CPU_CORES CPU-Kerne / $RAM_MB MB RAM / $DISK_TYPE
+# MYSQL PERFORMANCE TUNING - AZEROTHCORE ($PROFILE, automatic)
+# Hardware: $CPU_CORES CPU cores / $RAM_MB MB RAM / $DISK_TYPE
 # ==================================================
 innodb_buffer_pool_size = $(format_mysql_size "$BUFFER_MB")
 innodb_buffer_pool_instances = $BUFFER_INSTANCES
@@ -219,8 +219,8 @@ log_queries_not_using_indexes = 0
 # END MYSQL PERFORMANCE TUNING - AZEROTHCORE
 EOF
 
-    echo "Automatisches MySQL-Tuning ($PROFILE):"
-    echo "  Hardware: $CPU_CORES CPU-Kerne, $RAM_MB MB RAM, $DISK_TYPE"
+    echo "Automatic MySQL tuning ($PROFILE):"
+    echo "  Hardware: $CPU_CORES CPU cores, $RAM_MB MB RAM, $DISK_TYPE"
     echo "  InnoDB Buffer Pool: $(format_mysql_size "$BUFFER_MB")"
     echo "  Max Connections: $MAX_CONNECTIONS"
     echo "  I/O Capacity: $IO_CAPACITY / $IO_CAPACITY_MAX"
@@ -230,26 +230,26 @@ EOF
 # 1. BASIC SYSTEM
 ################################################################################
 collect_basic_inputs() {
-    step "1. Vorbereitung und Eingaben"
-    confirm "Ist das Debian-LXC mit deinen eigenen Vorbereitungen und Anpassungen fertig eingerichtet?"
+    step "1. Preparation and inputs"
+    confirm "Is the Debian LXC fully set up with your own preparations and adjustments?"
 
-    read -rp "Zeitzone [Europe/Berlin]: " SERVER_TIMEZONE
+    read -rp "Timezone [Europe/Berlin]: " SERVER_TIMEZONE
     SERVER_TIMEZONE=${SERVER_TIMEZONE:-Europe/Berlin}
     if [ -z "$SERVER_TIMEZONE" ] || [ ! -f "/usr/share/zoneinfo/$SERVER_TIMEZONE" ]; then
-        warn "Unbekannte Zeitzone: $SERVER_TIMEZONE"
+        warn "Unknown timezone: $SERVER_TIMEZONE"
         exit 1
     fi
 
     while true; do
-        read -rp "Administrationsbenutzer: " ADMIN_USER
+        read -rp "Administration user: " ADMIN_USER
         if [[ "$ADMIN_USER" =~ ^[a-z_][a-z0-9_-]*\$?$ ]]; then break; fi
-        warn "Ungültiger Linux-Benutzername. Verwende Kleinbuchstaben, Zahlen, '_' oder '-'."
+        warn "Invalid Linux username. Use lowercase letters, digits, '_' or '-'."
     done
     while true; do
-        read -rsp "Passwort für '$ADMIN_USER': " ADMIN_PASS; echo ""
-        read -rsp "Passwort wiederholen: " ADMIN_PASS_CONFIRM; echo ""
+        read -rsp "Password for '$ADMIN_USER': " ADMIN_PASS; echo ""
+        read -rsp "Repeat password: " ADMIN_PASS_CONFIRM; echo ""
         [ "$ADMIN_PASS" = "$ADMIN_PASS_CONFIRM" ] && break
-        warn "Die Passwörter stimmen nicht überein. Bitte erneut eingeben."
+        warn "Passwords do not match. Please try again."
     done
     unset ADMIN_PASS_CONFIRM
 }
@@ -257,33 +257,33 @@ collect_basic_inputs() {
 collect_auth_inputs() {
     local DEFAULT_OWNER
     DEFAULT_OWNER="${SUDO_USER:-$(whoami)}"
-    read -rp "Besitzer für den Authserver-Ordner [$DEFAULT_OWNER]: " AUTH_OWNER
+    read -rp "Owner for the Authserver folder [$DEFAULT_OWNER]: " AUTH_OWNER
     AUTH_OWNER=${AUTH_OWNER:-$DEFAULT_OWNER}
-    read -rp "Installationspfad für den Authserver [/opt/ac-authserver]: " AUTH_DIR
+    read -rp "Installation path for the Authserver [/opt/ac-authserver]: " AUTH_DIR
     AUTH_DIR=${AUTH_DIR:-/opt/ac-authserver}
-    read -rp "AzerothCore-Branch für den Authserver [master]: " AUTH_BRANCH
+    read -rp "AzerothCore branch for the Authserver [master]: " AUTH_BRANCH
     AUTH_BRANCH=${AUTH_BRANCH:-master}
 }
 
 collect_world_inputs() {
     local DEFAULT_OWNER
     DEFAULT_OWNER="${SUDO_USER:-$(whoami)}"
-    read -rp "Besitzer für den Worldserver-Ordner [$DEFAULT_OWNER]: " WORLD_OWNER
+    read -rp "Owner for the Worldserver folder [$DEFAULT_OWNER]: " WORLD_OWNER
     WORLD_OWNER=${WORLD_OWNER:-$DEFAULT_OWNER}
-    read -rp "Installationspfad für den Worldserver [/opt/ac-worldserver]: " WORLD_DIR
+    read -rp "Installation path for the Worldserver [/opt/ac-worldserver]: " WORLD_DIR
     WORLD_DIR=${WORLD_DIR:-/opt/ac-worldserver}
-    read -rp "AzerothCore-Branch für den Worldserver [Playerbot]: " WORLD_BRANCH
+    read -rp "AzerothCore branch for the Worldserver [Playerbot]: " WORLD_BRANCH
     WORLD_BRANCH=${WORLD_BRANCH:-Playerbot}
 }
 
 collect_database_password() {
     while true; do
-        read -rsp "Passwort für den MySQL-Benutzer 'acore': " DB_PASS
+        read -rsp "Password for the MySQL user 'acore': " DB_PASS
         echo ""
-        read -rsp "Passwort wiederholen: " DB_PASS_CONFIRM
+        read -rsp "Repeat password: " DB_PASS_CONFIRM
         echo ""
         [ "$DB_PASS" = "$DB_PASS_CONFIRM" ] && break
-        warn "Die Passwörter stimmen nicht überein. Bitte erneut eingeben."
+        warn "Passwords do not match. Please try again."
     done
     unset DB_PASS_CONFIRM
 }
@@ -303,7 +303,7 @@ EOF
     sudo systemctl restart mysql
     echo "MySQL restarted."
 
-    step "Automatisches MySQL-Tuning"
+    step "Automatic MySQL tuning"
     generate_mysql_tuning "$profile"
     sudo systemctl restart mysql
 
@@ -352,58 +352,58 @@ ensure_hostname_resolution() {
         '$1 ~ /^127\./ { for (i = 2; i <= NF; i++) if ($i == hostname) found = 1 } END { exit !found }' \
         /etc/hosts; then
         printf '127.0.1.1\t%s\n' "$CURRENT_HOSTNAME" >> /etc/hosts
-        echo "Hostname '$CURRENT_HOSTNAME' in /etc/hosts ergänzt."
+        echo "Added hostname '$CURRENT_HOSTNAME' to /etc/hosts."
     fi
 }
 
 print_basic_checklist() {
-    step "Abschluss-Checkliste"
-    echo "[x] Allgemeine Vorbereitung des LXC bestätigt"
-    echo "[x] System aktualisiert und Basiswerkzeuge installiert"
-    echo "[x] Lokale Hostname-Auflösung geprüft"
-    echo "[x] Zeitzone auf '$SERVER_TIMEZONE' gesetzt"
-    echo "[x] Administrationskonto '$ADMIN_USER' eingerichtet und für sudo autorisiert"
-    echo "[x] Dynamisches MOTD-Template installiert"
-    echo "[x] SSH aktiviert und Root-Login per SSH deaktiviert"
-    echo "[x] Fail2Ban für SSH aktiviert"
-    echo "[x] SSH- und sudo-Zugang bestätigt"
-    echo "[x] Root-Passwort gesperrt"
+    step "Final checklist"
+    echo "[x] General LXC preparation confirmed"
+    echo "[x] System updated and base tools installed"
+    echo "[x] Local hostname resolution verified"
+    echo "[x] Timezone set to '$SERVER_TIMEZONE'"
+    echo "[x] Administration account '$ADMIN_USER' created and authorized for sudo"
+    echo "[x] Dynamic MOTD template installed"
+    echo "[x] SSH enabled and root login over SSH disabled"
+    echo "[x] Fail2Ban enabled for SSH"
+    echo "[x] SSH and sudo access confirmed"
+    echo "[x] Root password locked"
 }
 
 run_basic_system() {
     collect_basic_inputs
-    step "2. Debian-Grundsystem"
+    step "2. Debian base system"
     apt update && apt full-upgrade -y
     apt install -y sudo htop curl wget nano unattended-upgrades screen tmux net-tools iproute2 unzip git iputils-ping glances openssh-server fail2ban locales
 
     ensure_hostname_resolution
 
     if ! timedatectl list-timezones | grep -Fxq "$SERVER_TIMEZONE"; then
-        warn "Unbekannte Zeitzone: $SERVER_TIMEZONE"; exit 1
+        warn "Unknown timezone: $SERVER_TIMEZONE"; exit 1
     fi
     timedatectl set-timezone "$SERVER_TIMEZONE"
-    step "3. Administrationskonto einrichten"
-    echo "Das Administrationskonto wird angelegt beziehungsweise aktualisiert"
-    echo "und für die Verwendung von sudo freigeschaltet."
-    echo "Verwendeter Account: $ADMIN_USER"
+    step "3. Set up administration account"
+    echo "The administration account is created or updated"
+    echo "and authorized to use sudo."
+    echo "Account used: $ADMIN_USER"
     id "$ADMIN_USER" &>/dev/null || useradd --create-home --shell /bin/bash "$ADMIN_USER"
     printf '%s:%s\n' "$ADMIN_USER" "$ADMIN_PASS" | chpasswd
     unset ADMIN_PASS
     usermod -aG sudo "$ADMIN_USER"
 
-    step "4. Dynamisches MOTD"
+    step "4. Dynamic MOTD"
     install_motd_template
-    echo "Das MOTD-Template wurde installiert."
+    echo "The MOTD template has been installed."
     echo ""
-    echo "Testausgabe des MOTD:"
+    echo "MOTD test output:"
     /usr/local/bin/dynamic-motd.sh
 
-    step "5. SSH absichern"
+    step "5. Harden SSH"
     sed -i 's/^#PermitRootLogin.*/PermitRootLogin no/' /etc/ssh/sshd_config
     sed -i 's/^PermitRootLogin.*/PermitRootLogin no/' /etc/ssh/sshd_config
     systemctl enable ssh; systemctl restart ssh
 
-    step "6. Fail2Ban für SSH konfigurieren"
+    step "6. Configure Fail2Ban for SSH"
     cat << 'EOF' > /etc/fail2ban/jail.d/ssh.local
 [sshd]
 enabled  = true
@@ -415,12 +415,12 @@ findtime = 600
 EOF
     systemctl enable fail2ban; systemctl restart fail2ban; sleep 2; fail2ban-client status
 
-    step "8. Root-Passwort sperren"
+    step "8. Lock root password"
     sudo passwd -l root
     print_basic_checklist
     echo ""
-    hint "Das Basissystem ist vorbereitet. Ergänze das System jetzt noch um deine eigenen"
-    hint "Installationen, Dienste und projektspezifischen Anpassungen, bevor du fortfährst."
+    hint "The base system is ready. Add your own installations, services and"
+    hint "project-specific adjustments before you continue."
 }
 
 ################################################################################
@@ -547,29 +547,29 @@ run_bothserver() {
 # 5. MYSQL ONLY
 ################################################################################
 run_mysql_only() {
-    step "MySQL installieren"
+    step "Install MySQL"
     sudo apt update
     sudo apt install -y mysql-server
     sudo systemctl enable --now mysql
 
-    echo "Für welches Profil soll das MySQL-Tuning berechnet werden?"
+    echo "Which profile should the MySQL tuning be calculated for?"
     echo "  1) Auth"
     echo "  2) World"
     echo "  3) Both"
     local profile_choice
-    read -rp "Profil [1-3]: " profile_choice
+    read -rp "Profile [1-3]: " profile_choice
     case "$profile_choice" in
         1) TUNING_PROFILE=auth ;;
         2) TUNING_PROFILE=world ;;
         3) TUNING_PROFILE=both ;;
-        *) warn "Ungültige Auswahl."; exit 1 ;;
+        *) warn "Invalid choice."; exit 1 ;;
     esac
 
     collect_database_password
     setup_database "$TUNING_PROFILE"
     unset DB_PASS
     step "Final step"
-    echo "MySQL wurde installiert und eingerichtet."
+    echo "MySQL has been installed and configured."
 }
 
 ################################################################################
@@ -585,21 +585,21 @@ main() {
         echo -e "${CYAN}#  AZEROTHCORE - COMBINED INSTALL SCRIPT                                      #${NC}"
         echo -e "${CYAN}################################################################################${NC}"
         echo ""
-        hint "Hinweis: Punkt 1 zuerst abschließen. Punkt 5 folgt nach dem Server-Build."
+        hint "Note: complete item 1 first. Item 5 follows after the server build."
         echo ""
         echo "  1) 🧱  Basic System   (Debian base setup, security, Fail2Ban)"
         echo "  2) 🔐  Authserver     (Auth & MySQL 8.4 database server - build only)"
         echo "  3) 🌍  Worldserver    (Worldserver incl. Playerbots - build only)"
-        echo "  4) 🔗  Bothserver     (Auth + World auf einer gemeinsamen LXC)"
-        echo "  5) 🛠️  Control        (eigene Auth-/Worldserver-Verwaltung installieren)"
-        echo "  6) 🗄️  MySQL          (nur MySQL-Datenbank installieren und einrichten)"
-        echo "  0) 🚪  Beenden"
+        echo "  4) 🔗  Bothserver     (Auth + World on one shared LXC)"
+        echo "  5) 🛠️  Control        (install the custom Auth/World management)"
+        echo "  6) 🗄️  MySQL          (install and configure the MySQL database only)"
+        echo "  0) 🚪  Exit"
         echo ""
         read -rp "Choice [0-6]: " choice
 
         case "$choice" in
             2|3|4)
-                confirm "Wurde Installpunkt 1 (Basic System) vollständig abgeschlossen?"
+                confirm "Has install item 1 (Basic System) been fully completed?"
                 ;;
         esac
 
@@ -630,8 +630,8 @@ main() {
                 run_bothserver
                 ;;
             5)
-                step "5. AzerothCore Control installieren"
-                confirm "Wurde der benötigte Auth- oder Worldserver bereits installiert und gebaut?"
+                step "5. Install AzerothCore Control"
+                confirm "Has the required Auth or Worldserver already been installed and built?"
                 bash "$SCRIPT_DIR/Control/install.sh"
                 ;;
             6)

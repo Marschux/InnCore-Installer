@@ -5,7 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 GREEN='\033[0;32m'; CYAN='\033[0;36m'; YELLOW='\033[1;33m'; NC='\033[0m'
 
 ask_default() { local prompt="$1" default="$2" value; read -rp "$prompt [$default]: " value; printf '%s' "${value:-$default}"; }
-require_absolute() { [[ "$1" = /* && "$1" != "/" ]] || { echo "Ungültiger absoluter Pfad: $1"; exit 1; }; }
+require_absolute() { [[ "$1" = /* && "$1" != "/" ]] || { echo "Invalid absolute path: $1"; exit 1; }; }
 
 install_role() {
     local role="$1" default_dir default_acore default_owner target acore owner auth_menu world_menu
@@ -13,16 +13,16 @@ install_role() {
         default_dir=/opt/acore-auth-control
         default_acore=/opt/ac-authserver
         default_owner="$(stat -c '%U' "$default_acore" 2>/dev/null || id -un)"
-        target="$(ask_default "Installationspfad für auth-Control" "${CONTROL_AUTH_TARGET:-$default_dir}")"
-        acore="$(ask_default "AzerothCore-Pfad für den Authserver" "${CONTROL_AUTH_DIR:-$default_acore}")"
-        owner="$(ask_default "Benutzer für den Authserver" "${CONTROL_AUTH_OWNER:-$default_owner}")"
+        target="$(ask_default "Installation path for auth Control" "${CONTROL_AUTH_TARGET:-$default_dir}")"
+        acore="$(ask_default "AzerothCore path for the Authserver" "${CONTROL_AUTH_DIR:-$default_acore}")"
+        owner="$(ask_default "User for the Authserver" "${CONTROL_AUTH_OWNER:-$default_owner}")"
     else
         default_dir=/opt/acore-world-control
         default_acore=/opt/ac-worldserver
         default_owner="$(stat -c '%U' "$default_acore" 2>/dev/null || id -un)"
-        target="$(ask_default "Installationspfad für world-Control" "${CONTROL_WORLD_TARGET:-$default_dir}")"
-        acore="$(ask_default "AzerothCore-Pfad für den Worldserver" "${CONTROL_WORLD_DIR:-$default_acore}")"
-        owner="$(ask_default "Benutzer für den Worldserver" "${CONTROL_WORLD_OWNER:-$default_owner}")"
+        target="$(ask_default "Installation path for world Control" "${CONTROL_WORLD_TARGET:-$default_dir}")"
+        acore="$(ask_default "AzerothCore path for the Worldserver" "${CONTROL_WORLD_DIR:-$default_acore}")"
+        owner="$(ask_default "User for the Worldserver" "${CONTROL_WORLD_OWNER:-$default_owner}")"
     fi
     require_absolute "$target"; require_absolute "$acore"
     sudo install -d -o "$owner" -g "$owner" "$target"
@@ -73,28 +73,28 @@ EOF
     fi
     sudo chown -R "$owner:$owner" "$target"
     if [ "${CONTROL_ACTION:-install}" = update ]; then
-        echo -e "${GREEN}$role-Control aktualisiert: $target${NC}"
+        echo -e "${GREEN}$role Control updated: $target${NC}"
     else
-        echo -e "${GREEN}$role-Control installiert: $target${NC}"
+        echo -e "${GREEN}$role Control installed: $target${NC}"
     fi
 }
 
-echo -e "${CYAN}=== AzerothCore Control installieren ===${NC}"
-echo "Die Dateien stammen ausschließlich aus diesem Repository; InnControl wird nicht verwendet."
+echo -e "${CYAN}=== Install AzerothCore Control ===${NC}"
+echo "The files come exclusively from this repository; InnControl is not used."
 if [ -n "${CONTROL_ROLE:-}" ]; then
     case "$CONTROL_ROLE" in
         auth) choice=1 ;;
         world) choice=2 ;;
         both) choice=3 ;;
-        *) echo "Ungültige CONTROL_ROLE: $CONTROL_ROLE"; exit 1 ;;
+        *) echo "Invalid CONTROL_ROLE: $CONTROL_ROLE"; exit 1 ;;
     esac
 else
-    read -rp "1) Authserver  2) Worldserver  3) Beide [1-3]: " choice
+    read -rp "1) Authserver  2) Worldserver  3) Both [1-3]: " choice
 fi
 case "$choice" in
     1) install_role auth ;;
     2) install_role world ;;
     3) install_role auth; install_role world ;;
-    *) echo "Ungültige Auswahl."; exit 1 ;;
+    *) echo "Invalid choice."; exit 1 ;;
 esac
-echo -e "${YELLOW}Verwendung: authmenu beziehungsweise worldmenu aufrufen.${NC}"
+echo -e "${YELLOW}Usage: run authmenu or worldmenu.${NC}"
