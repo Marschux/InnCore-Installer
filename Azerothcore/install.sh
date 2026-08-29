@@ -58,10 +58,6 @@ hint() {
     echo -e "${YELLOW}$1${NC}"
 }
 
-# acore.sh install-deps adds the MySQL APT repo, whose mysql-apt-config package
-# opens an interactive whiptail dialog on (re)configuration. acore.sh runs its
-# own inner sudo, so DEBIAN_FRONTEND from here does not reach it - preseed the
-# answers instead. mysql-8.4-lts (not 9.x, which dropped mysql_native_password).
 # Abort early instead of failing 20 minutes into a build with "No space left on
 # device". need_gb is a generous estimate: source + RelWithDebInfo build tree +
 # installed binaries (+ client data for world).
@@ -76,7 +72,17 @@ check_disk() {
     fi
 }
 
-preseed_mysql_apt() {
+# acore.sh install-deps adds the MySQL APT repo. Its mysql-apt-config package
+# opens an interactive whiptail dialog on (re)configuration. Two guards:
+#   1. Preseed the answers via debconf (mysql-8.4-lts, not 9.x which dropped
+#      mysql_native_password).
+#   2. Force debconf non-interactive. acore.sh runs apt directly when it is
+#      already root (our normal case: install.sh started via sudo), so exporting
+#      DEBIAN_FRONTEND is enough there. For the passwordless-sudo-as-user case
+#      that env is stripped at acore's inner sudo, so also flip debconf's own
+#      frontend setting for the duration and restore it afterwards.
+run_install_deps() {
+    local prev_frontend
     sudo debconf-set-selections <<'EOF'
 mysql-apt-config mysql-apt-config/select-server select mysql-8.4-lts
 mysql-apt-config mysql-apt-config/select-product select Ok
@@ -84,6 +90,14 @@ mysql-apt-config mysql-apt-config/select-tools select Enabled
 mysql-apt-config mysql-apt-config/repo-codename select
 mysql-apt-config mysql-apt-config/repo-distro select debian
 EOF
+    prev_frontend="$(sudo debconf-show debconf 2>/dev/null | sed -n 's/^[* ] debconf\/frontend: //p')"
+    echo 'debconf debconf/frontend select Noninteractive' | sudo debconf-set-selections
+    (
+        set -e
+        trap 'echo "debconf debconf/frontend select ${prev_frontend:-Dialog}" | sudo debconf-set-selections' EXIT
+        export DEBIAN_FRONTEND=noninteractive
+        ./acore.sh install-deps
+    )
 }
 
 ask_install_control() {
@@ -593,11 +607,10 @@ run_authserver() {
     git clone https://github.com/azerothcore/azerothcore-wotlk.git --branch="$AUTH_BRANCH" .
 
     step "3. Install dependencies"
-    preseed_mysql_apt
     OSDISTRO="$(. /etc/os-release && echo "$ID")"
     echo "Detected distro: $OSDISTRO"
     sed -i "s/^#\s*OSDISTRO=.*/OSDISTRO=\"$OSDISTRO\"/" "$AUTH_DIR/conf/dist/config.sh"
-    ./acore.sh install-deps
+    run_install_deps
 
     step "4. Create and enter the build directory"
     mkdir -p build
@@ -650,12 +663,11 @@ run_worldserver() {
     git clone https://github.com/mod-playerbots/mod-playerbots.git --branch=master
 
     step "3. Install dependencies"
-    preseed_mysql_apt
     OSDISTRO="$(. /etc/os-release && echo "$ID")"
     echo "Detected distro: $OSDISTRO"
     sed -i "s/^#\s*OSDISTRO=.*/OSDISTRO=\"$OSDISTRO\"/" "$WORLD_DIR/conf/dist/config.sh"
     cd "$WORLD_DIR"
-    ./acore.sh install-deps
+    run_install_deps
 
     step "4. Create and enter the build directory"
     mkdir -p build

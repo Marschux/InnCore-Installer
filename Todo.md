@@ -4,17 +4,7 @@ Aus zwei kompletten Testbench-Durchläufen (echter Build, Debian 13).
 
 ## Offen
 
-### 1. `preseed_mysql_apt` unterdrückt den whiptail-Dialog nicht
-Beim World-Build (`run_worldserver` → `acore.sh install-deps`) erscheint der
-`mysql-apt-config`-Dialog trotzdem. Die 3 debconf-Werte sind zwar vorbelegt
-(Dialog zeigt „Currently selected: mysql-8.4-lts"), aber `DEBIAN_FRONTEND=
-noninteractive` erreicht acore.sh's inneres `sudo apt` nicht.
-**Fix:** um den `install-deps`-Aufruf `DEBIAN_FRONTEND=noninteractive` in
-`/etc/environment` schreiben (pam_env liest das bei jedem `sudo`), danach wieder
-entfernen. — Manuell wegklicken: Taste `O` oder `Down Down`, dann `Enter`.
-Zwingend **mysql-8.4-lts** (nicht 9.x — dort fehlt `mysql_native_password`).
-
-### 2. Priority-Warnung des worldserver
+### 1. Priority-Warnung des worldserver
 Beim Start (Autostart oder als non-root) meldet der worldserver
 „Can't set process priority class, error: Permission denied".
 `AmbientCapabilities=CAP_SYS_NICE` ist in der Autostart-Unit gesetzt und kommt
@@ -24,7 +14,7 @@ nice (`LimitNICE=`). **Rein kosmetisch**, läuft normal weiter.
 **Fix-Optionen:** `LimitNICE=-10` + `LimitRTPRIO=10` in die Unit, oder
 `Process.Priority = 0` in `values/values_world.conf`.
 
-### 3. `update_control` / `CONTROL_SOURCE_DIR` robuster machen
+### 2. `update_control` / `CONTROL_SOURCE_DIR` robuster machen
 `update_control` liest die neuen Skripte aus dem Repo-Checkout
 (`CONTROL_SOURCE_DIR`). Läuft das Menü als SERVER_USER und liegt der Checkout in
 einem 700-Home, schlägt es fehl. Es gibt jetzt eine Warnung beim Install, aber
@@ -32,14 +22,14 @@ sauberer wäre: bei Install die Skript-Quellen zusätzlich nach `$target/.src/`
 kopieren und `update_control` von dort ziehen (dann checkout-unabhängig), bzw.
 `update_control` macht selbst `git -C <checkout> pull` + Copy.
 
-### 4. Doku-Überschneidung `README.md` ↔ `Azerothcore/install.md`
+### 3. Doku-Überschneidung `README.md` ↔ `Azerothcore/install.md`
 Root-`README.md` (Deutsch) und `Azerothcore/install.md` (Englisch) beschreiben
 beide Menü / Usage / First-Start, teils mit abweichenden Pfaden
 (`/opt/wowserver-install` vs `/opt/wowserver-install/Azerothcore`,
 `cp install.sh` vs voller Clone). Eine als Kurzverweis auf die andere machen,
 oder klar aufteilen (README = Einstieg, install.md = Details).
 
-### 5. `run_worldserver` Schritt 3: `conf/dist/config.sh` vs `conf/config.sh`
+### 4. `run_worldserver` Schritt 3: `conf/dist/config.sh` vs `conf/config.sh`
 `sed` setzt `OSDISTRO` in `conf/dist/config.sh`, aber `acore.sh` liest zur
 Laufzeit `conf/config.sh` und meldet
 „NOTICE: file <.../conf/config.sh> not found, we use default configuration only".
@@ -47,7 +37,7 @@ Build lief trotzdem durch (dist-Datei reicht für install-deps). Prüfen ob das
 für andere `acore.sh`-Schritte relevant ist, ggf. `cp conf/dist/config.sh
 conf/config.sh` nach dem `sed`.
 
-### 6. `values/*.conf` einmal vollständig gegen AC-Defaults gegenprüfen
+### 5. `values/*.conf` einmal vollständig gegen AC-Defaults gegenprüfen
 AC-Startup validiert selbst und meldet Fehler — bisher nur `CharactersPerRealm`
 aufgefallen (gefixt: 50→10). Trotzdem einmal alle Keys/Werte gegen die aktuellen
 `.conf.dist` + AC-Validatoren durchgehen (aus InnControl übernommen, dort ggf.
@@ -57,8 +47,11 @@ weitere veraltete Werte).
 
 - [x] Step-Nummerierung `run_basic_system` fortlaufend (7 = Lock root, auth
       Final = 8, world Final = 9).
-- [x] `preseed_mysql_apt()` vor `install-deps` (belegt die debconf-Werte vor —
-      siehe Offen #1 für den verbleibenden Teil).
+- [x] whiptail-Dialog bei `install-deps` → `run_install_deps()`: debconf-Werte
+      preseeden + `debconf/frontend` temporär auf `Noninteractive` (survivt den
+      sudo-Boundary, `/etc/environment` tut das auf Debian 13 NICHT) +
+      `export DEBIAN_FRONTEND` (deckt den root-Fall ab), danach zurückgesetzt.
+      Mechanismus getestet; voller Fresh-Rebuild-Test noch offen.
 - [x] Control sudoers-Grant → `install_control_role` schreibt
       `/etc/sudoers.d/acore-control-{auth,world}` (NOPASSWD, nur azerothcore-*-
       Units + Unit-tee/rm), mit `visudo -c`. Getestet: Autostart/Timer ohne
