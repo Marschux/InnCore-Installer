@@ -572,6 +572,11 @@ run_authserver() {
     cp "$AUTH_DIR/env/dist/etc/authserver.conf.dist" "$AUTH_DIR/env/dist/etc/authserver.conf"
     echo "authserver.conf created: $AUTH_DIR/env/dist/etc/authserver.conf"
 
+    # The clone/build ran as whoever started install.sh (root on a fresh LXC),
+    # so everything below AUTH_DIR is root-owned. authmenu runs as AUTH_OWNER and
+    # must be able to write configs, backups and git pulls here.
+    sudo chown -R "$AUTH_OWNER:$AUTH_OWNER" "$AUTH_DIR"
+
     setup_database "${TUNING_PROFILE:-auth}"
 
     step "11. Final step"
@@ -629,6 +634,10 @@ run_worldserver() {
     echo -e "\nAllowTwoSide.WhoList = 1" >> "$WORLD_DIR/env/dist/etc/worldserver.conf"
     cp "$WORLD_DIR/env/dist/etc/modules/playerbots.conf.dist" "$WORLD_DIR/env/dist/etc/modules/playerbots.conf"
     echo "worldserver.conf and playerbots.conf created."
+
+    # See run_authserver: hand the whole tree to WORLD_OWNER so worldmenu (which
+    # runs as that user) can write configs, backups and git pulls.
+    sudo chown -R "$WORLD_OWNER:$WORLD_OWNER" "$WORLD_DIR"
 
     setup_database "${TUNING_PROFILE:-world}"
 
