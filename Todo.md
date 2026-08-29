@@ -24,18 +24,10 @@ Aufgefallen beim Testbench-Durchlauf.
 - [x] `values_world.conf`: `InstantLogout` (ungültig) raus, `CharactersPerRealm`
       50→10 (AC-Validator).
 
-## Offen — WICHTIG: geteilter tmux-Server bei Autostart
-
-- [ ] Reboot-Test: beide Autostart-Units (auth + world) starten fast zeitgleich.
-      Der tmux-Server ist pro User (admin) => die zuerst startende Unit spawnt
-      ihn, die zweite `tmux new-session` hängt sich an denselben Server.
-      Ergebnis: **beide Server landen in EINER cgroup** (azerothcore-auth.service).
-      Folgen: `KillMode`/`ExecStop` der world-Unit greift nicht auf den
-      worldserver; `systemctl stop azerothcore-auth` killt beide.
-      Fix: eigener tmux-Socket pro Rolle — `tmux -L azerothcore-auth ...` bzw.
-      `-L azerothcore-world` überall (common.sh + Menüs), Socket-Name in
-      control.conf. Alternativ run-engine direkt als `Type=simple` ohne tmux.
-      (Autostart an sich funktioniert: nach ~40s beide Server oben.)
+- [x] geteilter tmux-Server bei Autostart → `tmx() = tmux -L $CONTROL_TMUX_L`
+      (acore-auth / acore-world) in common.sh + Menüs, Socket in control.conf.
+      Reboot-Test: jeder Server jetzt in eigener cgroup, `systemctl stop
+      azerothcore-world` lässt authserver laufen.
 
 ## Offen — sonstiges
 
