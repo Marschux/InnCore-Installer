@@ -29,6 +29,13 @@ update_control() {
 
 start_world()   { server_start worldserver "$WORLD_ENGINE" "$WORLD_BINARY" "$WORLD_CONF" "$WORLD_SESSION"; }
 stop_world()    { server_stop worldserver "$WORLD_SESSION" "server shutdown 30" 180; }
+kill_world() {
+    echo -e "${RED}Force-kill discards every character save still queued.${RESET}"
+    echo "Use [2] Stop unless the server is genuinely stuck (e.g. hangs on"
+    echo "\"Waiting for N characters loading into database\" on a first start)."
+    read -rp "Type KILL to confirm: " c
+    [ "$c" = KILL ] && server_kill worldserver "$WORLD_SESSION" || echo "Cancelled."
+}
 restart_world() { server_restart worldserver "$WORLD_ENGINE" "$WORLD_BINARY" "$WORLD_CONF" "$WORLD_SESSION" "server shutdown 30" 180; }
 reload_world()  { server_reload worldserver "$WORLD_SESSION"; }
 
@@ -62,6 +69,7 @@ WorkingDirectory=$ACORE_DIR
 ExecStart=$WORLD_MENU start
 ExecStop=$WORLD_MENU stop
 RemainAfterExit=yes
+KillMode=mixed
 TimeoutStopSec=180
 
 [Install]
@@ -190,18 +198,19 @@ render_menu() {
 
     menu_section "$COLOR_SERVER" "⚙️  SERVER CONTROL"
     echo -e "  ${COLOR_SERVER}[1]${RESET}  🚀  Start server          ${COLOR_SERVER}[2]${RESET}  🛑  Stop server"
-    echo -e "  ${COLOR_SERVER}[3]${RESET}  🔄  Restart server        ${COLOR_SERVER}[4]${RESET}  🧿  Reload config"
-    echo -e "  ${COLOR_SERVER}[5]${RESET}  📊  Server status         ${COLOR_SERVER}[6]${RESET}  💾  Save world"
+    echo -e "  ${COLOR_SERVER}[3]${RESET}  💥  ${RED}Kill server (force)${RESET}   ${COLOR_SERVER}[4]${RESET}  🔄  Restart server"
+    echo -e "  ${COLOR_SERVER}[5]${RESET}  🧿  Reload config         ${COLOR_SERVER}[6]${RESET}  📊  Server status"
 
     menu_section "$COLOR_LOGS" "📄  LOGS & CONSOLE"
-    echo -e "  ${COLOR_LOGS}[7]${RESET}  🖥️  World console         ${COLOR_LOGS}[8]${RESET}  📚  Tmux scrollback"
+    echo -e "  ${COLOR_LOGS}[7]${RESET}  💾  Save world            ${COLOR_LOGS}[8]${RESET}  🖥️  World console"
+    echo -e "  ${COLOR_LOGS}[9]${RESET}  📚  Tmux scrollback"
 
     menu_section "$COLOR_TOOLS" "🗄️  TOOLS"
-    echo -e "  ${COLOR_TOOLS}[9]${RESET}  🚀  Autostart             ${COLOR_TOOLS}[10]${RESET} ⏰  Daily restart timer"
-    echo -e "  ${COLOR_TOOLS}[11]${RESET} 🛠️  Build tools           ${COLOR_TOOLS}[12]${RESET} 👤  Delete account"
+    echo -e "  ${COLOR_TOOLS}[10]${RESET} 🚀  Autostart             ${COLOR_TOOLS}[11]${RESET} ⏰  Daily restart timer"
+    echo -e "  ${COLOR_TOOLS}[12]${RESET} 🛠️  Build tools           ${COLOR_TOOLS}[13]${RESET} 👤  Delete account"
 
     menu_section "$COLOR_CONFIG" "📝  CONFIG & MAINTENANCE"
-    echo -e "  ${COLOR_CONFIG}[13]${RESET} 📝  Config & Control scripts"
+    echo -e "  ${COLOR_CONFIG}[14]${RESET} 📝  Config & Control scripts"
 
     menu_section "$COLOR_EXIT" "⏻  EXIT"
     echo -e "  ${COLOR_EXIT}[0]${RESET}  🚪  Exit menu"
@@ -214,22 +223,23 @@ menu() {
     while true; do
         draw_menu render_menu
         echo ""
-        read -t 60 -rp "🔹  Select an option (0-13): " choice; rc=$?
+        read -t 60 -rp "🔹  Select an option (0-14): " choice; rc=$?
         [ "$rc" -gt 128 ] && continue
         case "$choice" in
             1) run_step start_world ;;
             2) run_step stop_world ;;
-            3) run_step restart_world ;;
-            4) run_step reload_world ;;
-            5) run_step server_status worldserver "$WORLD_SESSION" ;;
-            6) run_step save_world ;;
-            7) clear; tmux attach -t "$WORLD_SESSION" 2>/dev/null || { echo "No active worldserver tmux session."; wait_for_user; } ;;
-            8) clear; tmux capture-pane -S -100000 -t "$WORLD_SESSION" -p 2>/dev/null || echo "No scrollback available."; wait_for_user ;;
-            9) run_step autostart_world ;;
-            10) run_step restart_timer ;;
-            11) build_menu ;;
-            12) run_step delete_account ;;
-            13) config_menu ;;
+            3) run_step kill_world ;;
+            4) run_step restart_world ;;
+            5) run_step reload_world ;;
+            6) run_step server_status worldserver "$WORLD_SESSION" ;;
+            7) run_step save_world ;;
+            8) clear; tmux attach -t "$WORLD_SESSION" 2>/dev/null || { echo "No active worldserver tmux session."; wait_for_user; } ;;
+            9) clear; tmux capture-pane -S -100000 -t "$WORLD_SESSION" -p 2>/dev/null || echo "No scrollback available."; wait_for_user ;;
+            10) run_step autostart_world ;;
+            11) run_step restart_timer ;;
+            12) build_menu ;;
+            13) run_step delete_account ;;
+            14) config_menu ;;
             0) clear; echo -e "${GREEN}👋  Worldserver menu closed.${RESET}"; exit 0 ;;
             *) echo "Invalid option."; sleep 1 ;;
         esac

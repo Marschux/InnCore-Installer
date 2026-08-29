@@ -27,6 +27,10 @@ update_control() {
 
 start_auth()   { server_start authserver "$AUTH_ENGINE" "$AUTH_BINARY" "$AUTH_CONF" "$AUTH_SESSION"; }
 stop_auth()    { server_stop authserver "$AUTH_SESSION" "" 120; }
+kill_auth() {
+    read -rp "Type KILL to force-stop the authserver: " c
+    [ "$c" = KILL ] && server_kill authserver "$AUTH_SESSION" || echo "Cancelled."
+}
 restart_auth() { server_restart authserver "$AUTH_ENGINE" "$AUTH_BINARY" "$AUTH_CONF" "$AUTH_SESSION" "" 120; }
 
 autostart_auth() {
@@ -45,6 +49,7 @@ WorkingDirectory=$ACORE_DIR
 ExecStart=$AUTH_MENU start
 ExecStop=$AUTH_MENU stop
 RemainAfterExit=yes
+KillMode=mixed
 TimeoutStopSec=120
 
 [Install]
@@ -66,7 +71,7 @@ account_menu() {
         echo "----------------------------------------------------------------------------"
         read -rp "🔹  Choice [0-2]: " choice
         case "$choice" in
-            1) mysql_auth --batch --table -e 'SELECT id, username, expansion, locked FROM account ORDER BY id;'; wait_for_user ;;
+            1) list_table 'SELECT id, username, expansion, locked FROM account ORDER BY id;'; wait_for_user ;;
             2) read -rp "Account ID to delete: " id
                if [[ "$id" =~ ^[0-9]+$ ]]; then
                    read -rp "Type DELETE to confirm: " confirm
@@ -92,7 +97,7 @@ realm_menu() {
         echo "----------------------------------------------------------------------------"
         read -rp "🔹  Choice [0-2]: " choice
         case "$choice" in
-            1) mysql_auth --batch --table -e 'SELECT id, name, address, port, flag, gamebuild FROM realmlist ORDER BY id;'; wait_for_user ;;
+            1) list_table 'SELECT id, name, address, port, flag, gamebuild FROM realmlist ORDER BY id;'; wait_for_user ;;
             2) read -rp "Realm ID: " id; read -rp "New address: " address
                if [[ "$id" =~ ^[0-9]+$ && "$address" =~ ^[A-Za-z0-9._-]+$ ]]; then
                    mysql_auth -e "UPDATE realmlist SET address='$address', localAddress='$address' WHERE id=$id;" && echo "Realm updated."
@@ -167,17 +172,18 @@ render_menu() {
 
     menu_section "$COLOR_SERVER" "⚙️  SERVER CONTROL"
     echo -e "  ${COLOR_SERVER}[1]${RESET}  🚀  Start server          ${COLOR_SERVER}[2]${RESET}  🛑  Stop server"
-    echo -e "  ${COLOR_SERVER}[3]${RESET}  🔄  Restart server        ${COLOR_SERVER}[4]${RESET}  📊  Server status"
+    echo -e "  ${COLOR_SERVER}[3]${RESET}  💥  ${RED}Kill server (force)${RESET}   ${COLOR_SERVER}[4]${RESET}  🔄  Restart server"
+    echo -e "  ${COLOR_SERVER}[5]${RESET}  📊  Server status"
 
     menu_section "$COLOR_LOGS" "📄  LOGS & CONSOLE"
-    echo -e "  ${COLOR_LOGS}[5]${RESET}  🖥️  Auth console          ${COLOR_LOGS}[6]${RESET}  📚  Tmux scrollback"
+    echo -e "  ${COLOR_LOGS}[6]${RESET}  🖥️  Auth console          ${COLOR_LOGS}[7]${RESET}  📚  Tmux scrollback"
 
     menu_section "$COLOR_TOOLS" "🗄️  TOOLS"
-    echo -e "  ${COLOR_TOOLS}[7]${RESET}  🚀  Autostart             ${COLOR_TOOLS}[8]${RESET}  🛠️  Build tools"
-    echo -e "  ${COLOR_TOOLS}[9]${RESET}  👤  Account management    ${COLOR_TOOLS}[10]${RESET} 🌍  Realm management"
+    echo -e "  ${COLOR_TOOLS}[8]${RESET}  🚀  Autostart             ${COLOR_TOOLS}[9]${RESET}  🛠️  Build tools"
+    echo -e "  ${COLOR_TOOLS}[10]${RESET} 👤  Account management    ${COLOR_TOOLS}[11]${RESET} 🌍  Realm management"
 
     menu_section "$COLOR_CONFIG" "📝  CONFIG & MAINTENANCE"
-    echo -e "  ${COLOR_CONFIG}[11]${RESET} 📝  Config & Control scripts"
+    echo -e "  ${COLOR_CONFIG}[12]${RESET} 📝  Config & Control scripts"
 
     menu_section "$COLOR_EXIT" "⏻  EXIT"
     echo -e "  ${COLOR_EXIT}[0]${RESET}  🚪  Exit menu"
@@ -190,20 +196,21 @@ menu() {
     while true; do
         draw_menu render_menu
         echo ""
-        read -t 60 -rp "🔹  Select an option (0-11): " choice; rc=$?
+        read -t 60 -rp "🔹  Select an option (0-12): " choice; rc=$?
         [ "$rc" -gt 128 ] && continue
         case "$choice" in
             1) run_step start_auth ;;
             2) run_step stop_auth ;;
-            3) run_step restart_auth ;;
-            4) run_step server_status authserver "$AUTH_SESSION" ;;
-            5) clear; tmux attach -t "$AUTH_SESSION" 2>/dev/null || { echo "No active authserver tmux session."; wait_for_user; } ;;
-            6) clear; tmux capture-pane -S -100000 -t "$AUTH_SESSION" -p 2>/dev/null || echo "No scrollback available."; wait_for_user ;;
-            7) run_step autostart_auth ;;
-            8) build_menu ;;
-            9) account_menu ;;
-            10) realm_menu ;;
-            11) config_menu ;;
+            3) run_step kill_auth ;;
+            4) run_step restart_auth ;;
+            5) run_step server_status authserver "$AUTH_SESSION" ;;
+            6) clear; tmux attach -t "$AUTH_SESSION" 2>/dev/null || { echo "No active authserver tmux session."; wait_for_user; } ;;
+            7) clear; tmux capture-pane -S -100000 -t "$AUTH_SESSION" -p 2>/dev/null || echo "No scrollback available."; wait_for_user ;;
+            8) run_step autostart_auth ;;
+            9) build_menu ;;
+            10) account_menu ;;
+            11) realm_menu ;;
+            12) config_menu ;;
             0) clear; echo -e "${GREEN}👋  Authserver menu closed.${RESET}"; exit 0 ;;
             *) echo "Invalid option."; sleep 1 ;;
         esac

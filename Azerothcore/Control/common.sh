@@ -185,6 +185,20 @@ server_restart() {
     server_start "$process" "$engine" "$binary" "$conf" "$session"
 }
 
+server_kill() {
+    local process="$1" session="$2"
+    echo "Force-stopping $process..."
+    pkill -TERM -x "$process" 2>/dev/null
+    for _ in $(seq 1 5); do pgrep -x "$process" >/dev/null 2>&1 || break; sleep 1; done
+    if pgrep -x "$process" >/dev/null 2>&1; then
+        pkill -KILL -x "$process" 2>/dev/null
+        sleep 1
+    fi
+    tmux kill-session -t "$session" 2>/dev/null || true
+    pgrep -x "$process" >/dev/null 2>&1 && { echo "$process still alive - check manually."; return 1; }
+    echo "$process force-stopped."
+}
+
 server_reload() {
     local process="$1" session="$2"
     if ! pgrep -x "$process" >/dev/null 2>&1 || ! tmux has-session -t "$session" 2>/dev/null; then
@@ -206,6 +220,14 @@ read_login_database() {
 mysql_auth() {
     read_login_database || { echo "Could not read LoginDatabaseInfo."; return 1; }
     MYSQL_PWD="$DB_PASS" mysql -h "$DB_HOST" -P "$DB_PORT" -u "$DB_USER" "$DB_NAME" "$@"
+}
+
+# Run a SELECT and print it as a table, or "(none)" when it returns no rows
+# (mysql --table prints nothing at all on an empty result).
+list_table() {
+    local out
+    out="$(mysql_auth --batch --table -e "$1" 2>&1)"
+    [ -n "$out" ] && printf '%s\n' "$out" || echo "(none)"
 }
 
 server_status() {

@@ -58,6 +58,20 @@ hint() {
     echo -e "${YELLOW}$1${NC}"
 }
 
+# acore.sh install-deps adds the MySQL APT repo, whose mysql-apt-config package
+# opens an interactive whiptail dialog on (re)configuration. acore.sh runs its
+# own inner sudo, so DEBIAN_FRONTEND from here does not reach it - preseed the
+# answers instead. mysql-8.4-lts (not 9.x, which dropped mysql_native_password).
+preseed_mysql_apt() {
+    sudo debconf-set-selections <<'EOF'
+mysql-apt-config mysql-apt-config/select-server select mysql-8.4-lts
+mysql-apt-config mysql-apt-config/select-product select Ok
+mysql-apt-config mysql-apt-config/select-tools select Enabled
+mysql-apt-config mysql-apt-config/repo-codename select
+mysql-apt-config mysql-apt-config/repo-distro select debian
+EOF
+}
+
 ask_install_control() {
     local role="$1"
     read -rp "Optionally install the Control menu now? [y/N]: " control_choice
@@ -111,6 +125,20 @@ install_control_role() {
     sudo install -d -o "$owner" -g "$owner" "$target"
     sudo install -m 0755 "$src/common.sh" "$target/common.sh"
     sudo install -m 0755 "$src/clean-build.sh" "$target/clean-build.sh"
+
+    if ! sudo -u "$owner" test -r "$src/common.sh"; then
+        warn "Warning: $owner cannot read $src (needed by 'Update Control scripts')."
+        warn "Clone the repo under /opt (world-readable), not a private home dir."
+    fi
+
+    # NOPASSWD grant for exactly the systemd actions the menu runs as $owner
+    # (autostart / restart timer). Without it every such action prompts for a
+    # password. Scoped to this role's azerothcore-* units only.
+    sudo tee "/etc/sudoers.d/acore-control-$role" >/dev/null <<EOF
+$owner ALL=(root) NOPASSWD: /usr/bin/systemctl daemon-reload, /usr/bin/systemctl * azerothcore-$role.service, /usr/bin/systemctl * azerothcore-$role-restart.timer, /usr/bin/systemctl * azerothcore-$role-restart.service, /usr/bin/tee /etc/systemd/system/azerothcore-$role.service, /usr/bin/tee /etc/systemd/system/azerothcore-$role-restart.timer, /usr/bin/tee /etc/systemd/system/azerothcore-$role-restart.service, /usr/bin/rm -f /etc/systemd/system/azerothcore-$role.service
+EOF
+    sudo chmod 0440 "/etc/sudoers.d/acore-control-$role"
+    sudo visudo -cf "/etc/sudoers.d/acore-control-$role" >/dev/null || { warn "sudoers grant invalid - removing."; sudo rm -f "/etc/sudoers.d/acore-control-$role"; }
 
     # keep_values: copy a values summary only if it is not there yet, so a
     # re-install / "Update Control scripts" never overwrites the operator's edits.
@@ -526,7 +554,7 @@ findtime = 600
 EOF
     systemctl enable fail2ban; systemctl restart fail2ban; sleep 2; fail2ban-client status
 
-    step "8. Lock root password"
+    step "7. Lock root password"
     sudo passwd -l root
     print_basic_checklist
     echo ""
@@ -548,6 +576,7 @@ run_authserver() {
     git clone https://github.com/azerothcore/azerothcore-wotlk.git --branch="$AUTH_BRANCH" .
 
     step "3. Install dependencies"
+    preseed_mysql_apt
     OSDISTRO="$(. /etc/os-release && echo "$ID")"
     echo "Detected distro: $OSDISTRO"
     sed -i "s/^#\s*OSDISTRO=.*/OSDISTRO=\"$OSDISTRO\"/" "$AUTH_DIR/conf/dist/config.sh"
@@ -579,7 +608,7 @@ run_authserver() {
 
     setup_database "${TUNING_PROFILE:-auth}"
 
-    step "11. Final step"
+    step "8. Final step"
     echo "The Authserver build and database setup are complete."
     echo "Management scripts and the final 'authmenu' start flow are handled separately."
     CONTROL_ROLE=auth offer_control_installation
@@ -603,6 +632,7 @@ run_worldserver() {
     git clone https://github.com/mod-playerbots/mod-playerbots.git --branch=master
 
     step "3. Install dependencies"
+    preseed_mysql_apt
     OSDISTRO="$(. /etc/os-release && echo "$ID")"
     echo "Detected distro: $OSDISTRO"
     sed -i "s/^#\s*OSDISTRO=.*/OSDISTRO=\"$OSDISTRO\"/" "$WORLD_DIR/conf/dist/config.sh"
@@ -641,7 +671,7 @@ run_worldserver() {
 
     setup_database "${TUNING_PROFILE:-world}"
 
-    step "12. Final step"
+    step "9. Final step"
     echo "The Worldserver build and database setup are complete."
     echo "Management scripts and the final 'worldmenu' start flow are handled separately."
     CONTROL_ROLE=world offer_control_installation
