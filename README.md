@@ -1,30 +1,30 @@
-# WoW Privatserver Installscript
+# WoW Private Server Install Script
 
-Install-Skripte für WoW-Privatserver-Cores.
+Install scripts for WoW private server cores.
 
-Aktuell: [`Azerothcore/`](Azerothcore/) – kombiniertes Install-Skript für
-AzerothCore WotLK inkl. Control-Menüs (`Azerothcore/Control/`).
+Currently: [`Azerothcore/`](Azerothcore/) – combined install script for
+AzerothCore WotLK incl. Control menus (`Azerothcore/Control/`).
 
-| Menü | Installation | Umfang |
-|------|--------------|--------|
-| 1 | Basic System | Grundsystem + Absicherung (Voraussetzung für 2/3/4) |
-| 2 | Authserver | nur Build |
-| 3 | Worldserver | nur Build |
-| 4 | Bothserver | Auth + World auf einer LXC |
-| 5 | Control | Management-Menüs `authmenu` / `worldmenu` |
+| Menu | Installation | Scope |
+|------|--------------|-------|
+| 1 | Basic System | Base system + hardening (prerequisite for 2/3/4) |
+| 2 | Authserver | build only |
+| 3 | Worldserver | build only |
+| 4 | Bothserver | Auth + World on one LXC |
+| 5 | Control | management menus `authmenu` / `worldmenu` |
 
-## Verwendung
+## Usage
 
-Auf einem frischen Debian-13-LXC als `root`. Eigene LXC-Vorbereitung (Netzwerk,
-Notizen, Snapshot) vorher abschließen.
+On a fresh Debian 13 LXC as `root`. Finish your own LXC preparation (network,
+notes, snapshot) beforehand.
 
-Platzbedarf: Auth ~20 GB, World ~45 GB, Bothserver ~60 GB. Das Skript prüft vor
-jedem Build den freien Platz und warnt.
+Disk: Auth ~20 GB, World ~45 GB, Bothserver ~60 GB. The script checks free space
+before each build and warns.
 
-### Erstmalige Installation
+### First-time installation
 
-`acore-install.sh` **mit** dem `Control/`-Ordner daneben – am einfachsten den
-kompletten `Azerothcore/`-Ordner klonen:
+`acore-install.sh` **with** the `Control/` folder next to it – easiest is to
+clone the whole `Azerothcore/` folder:
 
 ```bash
 apt update && apt install -y git
@@ -36,63 +36,63 @@ cd /opt/wowserver-install
 ./acore-install.sh
 ```
 
-`/opt` bewusst statt `/root` – Basic System sperrt root und erstellt `admin`;
-ein Checkout unter `/root` (Modus 700) wäre danach für `admin` nicht mehr
-erreichbar. Der Ordner muss für den späteren Server-Owner lesbar sein
-(`chmod -R a+rX`), sonst kann „Update Control scripts" den Checkout nicht lesen.
+`/opt` deliberately, not `/root` – Basic System locks root and creates `admin`;
+a checkout under `/root` (mode 700) would then be unreachable for `admin`. The
+folder must be readable by the later server owner (`chmod -R a+rX`), otherwise
+"Update Control scripts" cannot read the checkout.
 
-### Reihenfolge
+### Order
 
-1. `1) Basic System` – fragt alle Angaben (Zeitzone, Admin-User + Passwort) am
-   Anfang ab, richtet dann Grundsystem, MOTD, SSH und Fail2Ban ein.
-   **Vor** dem Sperren des Root-Passworts die SSH-Anmeldung als `admin` +
-   `sudo -i` in einem zweiten Terminal testen.
-2. Danach eigene Installationen / Dienste / Anpassungen ergänzen.
-3. `2) Authserver` / `3) Worldserver` (oder `4) Bothserver`). Das Control-Menü
-   wird am Ende jeweils optional angeboten, oder später über `5) Control`.
+1. `1) Basic System` – asks for everything (timezone, admin user + password) up
+   front, then sets up the base system, MOTD, SSH and Fail2Ban.
+   **Before** the root password is locked, test SSH login as `admin` + `sudo -i`
+   in a second terminal.
+2. Then add your own installations / services / adjustments.
+3. `2) Authserver` / `3) Worldserver` (or `4) Bothserver`). The Control menu is
+   offered optionally at the end of each, or later via `5) Control`.
 
-Script erneut öffnen: `cd /opt/wowserver-install && ./acore-install.sh`
+Re-open the script: `cd /opt/wowserver-install && ./acore-install.sh`
 
-## Control-Menüs
+## Control menus
 
 ```text
 Control/
-├── common.sh              gemeinsame Helfer (Status, Server-Steuerung, apply_values)
+├── common.sh              shared helpers (status, server control, apply_values)
 ├── auth-menu.sh           authmenu
 ├── world-menu.sh          worldmenu
-├── clean-build.sh         Build-Verzeichnis leeren
-└── values/                kuratierte Config-Zusammenfassungen
+├── clean-build.sh         clear the build directory
+└── values/                curated config summaries
     ├── values_auth.conf
     ├── values_world.conf
     └── values_playerbots.conf
 ```
 
-`values/*.conf` sind kuratierte Auszüge der echten Config-Dateien. Im Menü eine
-bearbeiten, dann „Apply": jeder Key, der auch im Ziel existiert, wird dort
-ersetzt (Wert verbatim, vorher Timestamp-Backup); unbekannte Keys werden
-gemeldet und übersprungen. Bei Install kopiert, von „Update Control scripts" nie
-überschrieben. Das World-Menü kann über „Edit any .conf" auch `worldserver.conf`
-und beliebige Modul-Configs bearbeiten.
+`values/*.conf` are curated extracts of the real config files. Edit one in the
+menu, then "Apply": every key that also exists in the target is replaced there
+(value verbatim, timestamped backup first); unknown keys are reported and
+skipped. Copied on install, never overwritten by "Update Control scripts". The
+world menu can also edit `worldserver.conf` and any module config via
+"Edit any .conf".
 
-`authmenu` / `worldmenu` als root oder `sudo` starten (das Menü re-exect als
-Server-Owner).
+Start `authmenu` / `worldmenu` as root or with `sudo` (the menu re-execs as the
+server owner).
 
-### Erster Start Authserver
+### First start – Authserver
 
-1. `Config` → `values_auth.conf` bearbeiten: echtes Passwort in
-   `LoginDatabaseInfo` → zurück → Apply → Restart **ja**.
-2. `Auth console`: Server fragt nach `acore_auth` anlegen → **ja**, auf
-   „Added realm …" warten, dann `Ctrl-B` `D` zum Ablösen.
-3. Optional `Autostart` aktivieren.
+1. `Config` → edit `values_auth.conf`: real password in `LoginDatabaseInfo` →
+   back → Apply → restart **yes**.
+2. `Auth console`: the server asks to create `acore_auth` → **yes**, wait for
+   "Added realm …", then `Ctrl-B` `D` to detach.
+3. Optionally enable `Autostart`.
 
-### Erster Start Worldserver
+### First start – Worldserver
 
-1. `Config` → `values_world.conf` und `values_playerbots.conf` bearbeiten +
-   applyen. Die drei `*DatabaseInfo`-Zeilen auf die Auth-LXC / echtes Passwort
-   zeigen lassen (`LoginDatabaseInfo` ist bei geteiltem Setup **nicht** 127.0.0.1).
-2. `Start server`, dann `World console`: Anlegen von `acore_world` /
-   `acore_characters` / `acore_playerbots` bestätigen.
-3. **Playerbots-Eigenheit:** der erste Start hängt bei
-   `Waiting for N characters loading into database`. Ablösen, `Kill server`
-   (`KILL` tippen) → `Start server` erneut. Der zweite Start läuft normal durch.
-4. Optional `Autostart`, `Daily restart timer`.
+1. `Config` → edit + apply `values_world.conf` and `values_playerbots.conf`.
+   Point the three `*DatabaseInfo` lines at the auth LXC / real password
+   (`LoginDatabaseInfo` is **not** 127.0.0.1 on a split setup).
+2. `Start server`, then `World console`: confirm creating `acore_world` /
+   `acore_characters` / `acore_playerbots`.
+3. **Playerbots quirk:** the first start hangs at
+   `Waiting for N characters loading into database`. Detach, `Kill server`
+   (type `KILL`) → `Start server` again. The second start runs through normally.
+4. Optionally `Autostart`, `Daily restart timer`.
