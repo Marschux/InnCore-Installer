@@ -40,6 +40,62 @@ run_as_owner() {
 
 git_owner() { run_as_owner git -C "$ACORE_DIR" "$@"; }
 
+# git in <dir> as the owner, tolerating a checkout owned by someone else.
+gitq() { run_as_owner git -C "$1" -c safe.directory='*' "${@:2}"; }
+
+# Bring a checkout to the tip of its current branch. Fast-forward if possible;
+# otherwise show what is in the way and offer a hard reset (git pull --ff-only
+# just fails silently on local changes / diverged history).
+git_update() {   # git_update <repo-dir>
+    local dir="$1" branch
+    [ -d "$dir/.git" ] || { echo "Not a git checkout: $dir"; return 1; }
+    branch="$(gitq "$dir" rev-parse --abbrev-ref HEAD 2>/dev/null)"
+    [ -n "$branch" ] && [ "$branch" != HEAD ] || { echo "Could not determine branch in $dir"; return 1; }
+    echo "Fetching origin ($branch) for $dir ..."
+    gitq "$dir" fetch --prune origin || { echo "fetch failed."; return 1; }
+    local dirty=0
+    gitq "$dir" diff --quiet && gitq "$dir" diff --cached --quiet || dirty=1
+    if [ "$dirty" -eq 0 ] && gitq "$dir" merge --ff-only "origin/$branch" >/dev/null 2>&1; then
+        echo "Updated to origin/$branch (fast-forward)."
+        return 0
+    fi
+    echo ""
+    echo "Cannot update cleanly (uncommitted changes and/or diverged history):"
+    gitq "$dir" status --short
+    echo ""
+    read -rp "Discard ALL local changes and hard-reset to origin/$branch? [y/N]: " a
+    case "$a" in
+        y|Y|j|J)
+            gitq "$dir" reset --hard "origin/$branch" && gitq "$dir" clean -fd \
+                && echo "Reset to origin/$branch." ;;
+        *) echo "Left $dir unchanged." ;;
+    esac
+}
+
+# Links RBAC permission 195 to every "Two side ..." permission in the auth DB.
+# The AllowTwoSide.Interaction.* flags in worldserver.conf alone do NOT enable
+# cross-faction group/guild/chat - the DB permission has to be linked too.
+apply_two_side_rbac() {
+    mysql_auth -N -s -e "SHOW TABLES LIKE 'rbac_permissions';" 2>/dev/null | grep -q rbac_permissions \
+        || { echo "rbac_permissions not found - start the authserver once so it creates the schema."; return 1; }
+    mysql_auth -e "INSERT IGNORE INTO rbac_linked_permissions (id, linkedId)
+                   SELECT 195, id FROM rbac_permissions WHERE name LIKE 'Two side %';" || return 1
+    local n
+    n="$(mysql_auth -N -s -e "SELECT COUNT(*) FROM rbac_linked_permissions WHERE id=195;")"
+    echo "Cross-faction RBAC applied: permission 195 links ${n} two-side permission(s)."
+    echo "Restart the worldserver (or '.reload rbac' in its console) to load it."
+}
+
+# Graceful server stop, then reboot the whole LXC.
+reboot_lxc() {   # reboot_lxc <process> <session> [shutdown-command]
+    echo "This stops ${1} and reboots the entire LXC."
+    read -rp "Type REBOOT to confirm: " c
+    [ "$c" = REBOOT ] || { echo "Cancelled."; return 0; }
+    server_stop "$1" "$2" "${3:-}" 180 || echo "(stop did not finish cleanly - rebooting anyway)"
+    echo "Rebooting now..."
+    sudo systemctl reboot
+}
+
 # Refresh the installed Control scripts from the repo checkout (CONTROL_SOURCE_DIR).
 # Pulls first when the checkout is a git repo. Fails loudly with the fix when the
 # checkout is not readable by the server user (e.g. cloned into a 700 home).
@@ -55,8 +111,7 @@ update_control_scripts() {   # update_control_scripts <menu-basename>
     fi
     if git -C "$src" rev-parse --git-dir >/dev/null 2>&1; then
         echo "Pulling latest from $src ..."
-        git -C "$src" -c safe.directory='*' pull --ff-only \
-            || echo "(git pull failed - installing the files as they are)"
+        gitq "$src" pull --ff-only || echo "(git pull failed - installing the files as they are)"
     fi
     # $SCRIPT_DIR is owned by the server user (this menu runs as them), no sudo.
     for f in common.sh clean-build.sh "$1"; do

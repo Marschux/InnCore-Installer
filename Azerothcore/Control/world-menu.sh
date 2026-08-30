@@ -42,8 +42,8 @@ save_world() {
 }
 
 pull_updates() {
-    git_owner pull --ff-only
-    [ -d "$ACORE_DIR/modules/mod-playerbots/.git" ] && run_as_owner git -C "$ACORE_DIR/modules/mod-playerbots" pull --ff-only
+    git_update "$ACORE_DIR"
+    [ -d "$ACORE_DIR/modules/mod-playerbots/.git" ] && { echo ""; git_update "$ACORE_DIR/modules/mod-playerbots"; }
 }
 
 autostart_world() {
@@ -209,8 +209,8 @@ render_menu() {
     menu_section "$COLOR_CONFIG" "📝  CONFIG & MAINTENANCE"
     echo -e "  ${COLOR_CONFIG}[14]${RESET} 📝  Config & Control scripts"
 
-    menu_section "$COLOR_EXIT" "⏻  EXIT"
-    echo -e "  ${COLOR_EXIT}[0]${RESET}  🚪  Exit menu"
+    menu_section "$COLOR_EXIT" "⏻  POWER & EXIT"
+    echo -e "  ${COLOR_EXIT}[15]${RESET} 🔁  Reboot LXC             ${COLOR_EXIT}[0]${RESET}  🚪  Exit menu"
     echo ""
     echo -e "${CYAN}════════════════════════════════════════════════════════════════════════════${RESET}"
 }
@@ -220,7 +220,7 @@ menu() {
     while true; do
         draw_menu render_menu
         echo ""
-        read -t 60 -rp "🔹  Select an option (0-14): " choice; rc=$?
+        read -t 60 -rp "🔹  Select an option (0-15): " choice; rc=$?
         [ "$rc" -gt 128 ] && continue
         case "$choice" in
             1) run_step start_world ;;
@@ -237,6 +237,7 @@ menu() {
             12) build_menu ;;
             13) run_step delete_account ;;
             14) config_menu ;;
+            15) run_step reboot_lxc worldserver "$WORLD_SESSION" "server shutdown 30" ;;
             0) clear; echo -e "${GREEN}👋  Worldserver menu closed.${RESET}"; exit 0 ;;
             *) echo "Invalid option."; sleep 1 ;;
         esac

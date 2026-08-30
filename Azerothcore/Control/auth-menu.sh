@@ -123,15 +123,17 @@ config_menu() {
         echo -e "  ${COLOR_CONFIG}[1]${RESET}  Edit values_auth.conf (summary)"
         echo -e "  ${COLOR_CONFIG}[2]${RESET}  Apply values_auth.conf -> authserver.conf"
         echo -e "  ${COLOR_CONFIG}[3]${RESET}  Edit authserver.conf (raw)"
-        echo -e "  ${COLOR_CONFIG}[4]${RESET}  Update Control scripts"
+        echo -e "  ${COLOR_CONFIG}[4]${RESET}  Apply cross-faction (two-side) RBAC"
+        echo -e "  ${COLOR_CONFIG}[5]${RESET}  Update Control scripts"
         echo -e "  ${COLOR_CONFIG}[0]${RESET}  Back"
         echo "----------------------------------------------------------------------------"
-        read -rp "🔹  Choice [0-4]: " choice
+        read -rp "🔹  Choice [0-5]: " choice
         case "$choice" in
             1) "${EDITOR:-nano}" "$SCRIPT_DIR/values/values_auth.conf" ;;
             2) run_step apply_auth_values ;;
             3) "${EDITOR:-nano}" "$AUTH_CONF" ;;
-            4) run_step update_control ;;
+            4) run_step apply_two_side_rbac ;;
+            5) run_step update_control ;;
             0) return ;;
             *) echo "Invalid option."; sleep 1 ;;
         esac
@@ -150,7 +152,7 @@ build_menu() {
         echo "----------------------------------------------------------------------------"
         read -rp "🔹  Choice [0-3]: " choice
         case "$choice" in
-            1) run_step git_owner pull --ff-only ;;
+            1) run_step git_update "$ACORE_DIR" ;;
             2) run_step safe_build "$ACORE_DIR/build" ;;
             3) run_step "$SCRIPT_DIR/clean-build.sh" "$ACORE_DIR" ;;
             0) return ;;
@@ -182,8 +184,8 @@ render_menu() {
     menu_section "$COLOR_CONFIG" "📝  CONFIG & MAINTENANCE"
     echo -e "  ${COLOR_CONFIG}[12]${RESET} 📝  Config & Control scripts"
 
-    menu_section "$COLOR_EXIT" "⏻  EXIT"
-    echo -e "  ${COLOR_EXIT}[0]${RESET}  🚪  Exit menu"
+    menu_section "$COLOR_EXIT" "⏻  POWER & EXIT"
+    echo -e "  ${COLOR_EXIT}[13]${RESET} 🔁  Reboot LXC             ${COLOR_EXIT}[0]${RESET}  🚪  Exit menu"
     echo ""
     echo -e "${CYAN}════════════════════════════════════════════════════════════════════════════${RESET}"
 }
@@ -193,7 +195,7 @@ menu() {
     while true; do
         draw_menu render_menu
         echo ""
-        read -t 60 -rp "🔹  Select an option (0-12): " choice; rc=$?
+        read -t 60 -rp "🔹  Select an option (0-13): " choice; rc=$?
         [ "$rc" -gt 128 ] && continue
         case "$choice" in
             1) run_step start_auth ;;
@@ -208,6 +210,7 @@ menu() {
             10) account_menu ;;
             11) realm_menu ;;
             12) config_menu ;;
+            13) run_step reboot_lxc authserver "$AUTH_SESSION" ;;
             0) clear; echo -e "${GREEN}👋  Authserver menu closed.${RESET}"; exit 0 ;;
             *) echo "Invalid option."; sleep 1 ;;
         esac
