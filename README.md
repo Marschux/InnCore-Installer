@@ -1,30 +1,31 @@
 # WoW Private Server Install Script
 
-Install scripts for WoW private server cores.
+Scripts to set up an AzerothCore WotLK server on a Debian 13 LXC.
 
-Currently: [`Azerothcore/`](Azerothcore/) – combined install script for
-AzerothCore WotLK incl. Control menus (`Azerothcore/Control/`).
+The main script is [`Azerothcore/acore-install.sh`](Azerothcore/acore-install.sh).
+It has a menu:
 
-| Menu | Installation | Scope |
-|------|--------------|-------|
-| 1 | Basic System | Base system + hardening (prerequisite for 2/3/4) |
-| 2 | Authserver | build only |
-| 3 | Worldserver | build only |
-| 4 | Bothserver | Auth + World on one LXC |
-| 5 | Control | management menus `authmenu` / `worldmenu` |
+| Menu | What it does |
+|------|--------------|
+| 1 | Basic System: base packages, admin user, MOTD, SSH hardening, Fail2Ban |
+| 2 | Authserver: build only |
+| 3 | Worldserver: build only (includes the Playerbots module) |
+| 4 | Bothserver: Auth + World on the same LXC |
+| 5 | Control: install the `authmenu` / `worldmenu` management menus |
+| 6 | MySQL: install and tune MySQL on its own |
 
-## Usage
+Run menu 1 first. Then 2, 3, or 4.
 
-On a fresh Debian 13 LXC as `root`. Finish your own LXC preparation (network,
-notes, snapshot) beforehand.
+## Requirements
 
-Disk: Auth ~20 GB, World ~45 GB, Bothserver ~60 GB. The script checks free space
-before each build and warns.
+- A fresh Debian 13 LXC, logged in as `root`.
+- Free disk space: about 20 GB for Auth, 45 GB for World, 60 GB for both.
+  The script checks and warns before it builds.
 
-### First-time installation
+## Install
 
-`acore-install.sh` **with** the `Control/` folder next to it – easiest is to
-clone the whole `Azerothcore/` folder:
+The script needs the `Control/` folder sitting next to it, so copy the whole
+`Azerothcore/` folder:
 
 ```bash
 apt update && apt install -y git
@@ -36,63 +37,77 @@ cd /opt/wowserver-install
 ./acore-install.sh
 ```
 
-`/opt` deliberately, not `/root` – Basic System locks root and creates `admin`;
-a checkout under `/root` (mode 700) would then be unreachable for `admin`. The
-folder must be readable by the later server owner (`chmod -R a+rX`), otherwise
-"Update Control scripts" cannot read the checkout.
+Use `/opt`, not `/root`. Basic System locks the root account and creates the
+`admin` user, and `admin` can't get into `/root` afterwards. The folder also
+has to stay readable for the user that will run the server, so that the
+"Update Control scripts" menu entry can find it:
 
-### Order
+```bash
+sudo chmod -R a+rX /opt/wowserver-install
+```
 
-1. `1) Basic System` – asks for everything (timezone, admin user + password) up
-   front, then sets up the base system, MOTD, SSH and Fail2Ban.
-   **Before** the root password is locked, test SSH login as `admin` + `sudo -i`
-   in a second terminal.
-2. Then add your own installations / services / adjustments.
-3. `2) Authserver` / `3) Worldserver` (or `4) Bothserver`). The Control menu is
-   offered optionally at the end of each, or later via `5) Control`.
+To open the menu again later:
 
-Re-open the script: `cd /opt/wowserver-install && ./acore-install.sh`
+```bash
+cd /opt/wowserver-install && ./acore-install.sh
+```
+
+## Order of steps
+
+1. **Basic System.** It asks for the timezone and the admin username/password
+   at the start, then does everything on its own. Before it locks the root
+   password, open a second terminal and check that you can log in as `admin`
+   and run `sudo -i`.
+2. Install anything else you need on the box (your own services, tweaks, etc.).
+3. **Authserver / Worldserver** (or **Bothserver** if both live on one LXC).
+   At the end of each, it offers to install the Control menu. You can also do
+   that later with menu entry 5.
 
 ## Control menus
 
+After a build you get `authmenu` and/or `worldmenu`. Start them as root or with
+`sudo` — they switch to the server user themselves.
+
 ```text
 Control/
-├── common.sh              shared helpers (status, server control, apply_values)
-├── auth-menu.sh           authmenu
-├── world-menu.sh          worldmenu
-├── clean-build.sh         clear the build directory
-└── values/                curated config summaries
+├── common.sh        shared code (status, start/stop, apply_values)
+├── auth-menu.sh      authmenu
+├── world-menu.sh     worldmenu
+├── clean-build.sh    wipes the build directory
+└── values/           short config summaries you edit in the menu
     ├── values_auth.conf
     ├── values_world.conf
     └── values_playerbots.conf
 ```
 
-`values/*.conf` are curated extracts of the real config files. Edit one in the
-menu, then "Apply": every key that also exists in the target is replaced there
-(value verbatim, timestamped backup first); unknown keys are reported and
-skipped. Copied on install, never overwritten by "Update Control scripts". The
-world menu can also edit `worldserver.conf` and any module config via
-"Edit any .conf".
+The files in `values/` are a short list of the settings you actually change.
+Edit one in the menu and pick "Apply": each setting is copied into the real
+config file (a timestamped backup is made first). Settings that don't exist in
+the target are skipped and listed. These files are left alone when you update
+the Control scripts, so your edits survive.
 
-Start `authmenu` / `worldmenu` as root or with `sudo` (the menu re-execs as the
-server owner).
+The world menu also has "Edit any .conf" for `worldserver.conf` and any module
+config.
 
-### First start – Authserver
+### Starting the Authserver the first time
 
-1. `Config` → edit `values_auth.conf`: real password in `LoginDatabaseInfo` →
-   back → Apply → restart **yes**.
-2. `Auth console`: the server asks to create `acore_auth` → **yes**, wait for
-   "Added realm …", then `Ctrl-B` `D` to detach.
-3. Optionally enable `Autostart`.
+1. `Config` → edit `values_auth.conf`, put the real database password into
+   `LoginDatabaseInfo`, go back, `Apply`, say yes to the restart.
+2. `Auth console` → the server asks whether to create the `acore_auth`
+   database, say yes. Wait until it prints "Added realm ...", then press
+   `Ctrl-B` then `D` to leave the console.
+3. Optional: turn on `Autostart`.
 
-### First start – Worldserver
+### Starting the Worldserver the first time
 
-1. `Config` → edit + apply `values_world.conf` and `values_playerbots.conf`.
-   Point the three `*DatabaseInfo` lines at the auth LXC / real password
-   (`LoginDatabaseInfo` is **not** 127.0.0.1 on a split setup).
-2. `Start server`, then `World console`: confirm creating `acore_world` /
-   `acore_characters` / `acore_playerbots`.
-3. **Playerbots quirk:** the first start hangs at
-   `Waiting for N characters loading into database`. Detach, `Kill server`
-   (type `KILL`) → `Start server` again. The second start runs through normally.
-4. Optionally `Autostart`, `Daily restart timer`.
+1. `Config` → edit and apply `values_world.conf` and `values_playerbots.conf`.
+   The three `*DatabaseInfo` lines need the auth server's address and the real
+   password. If Auth and World are on different machines, `LoginDatabaseInfo`
+   is not `127.0.0.1`.
+2. `Start server`, then `World console` → confirm creating `acore_world`,
+   `acore_characters` and `acore_playerbots`.
+3. The first start gets stuck at
+   `Waiting for N characters loading into database`. This is a known
+   Playerbots issue. Leave the console, use `Kill server` (type `KILL`), then
+   `Start server` again. The second start finishes normally.
+4. Optional: `Autostart` and the `Daily restart timer`.
