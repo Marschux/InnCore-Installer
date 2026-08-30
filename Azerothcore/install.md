@@ -10,25 +10,8 @@ Mirrors the guides in this repo step by step, with a menu:
 | 4 | Bothserver | Auth + World on one shared LXC - optional |
 | 5 | Control | Custom management menus for Auth and Worldserver |
 
-## Usage
-
-A fresh LXC is logged in as root, so no `sudo` yet (that only exists once
-Basic System installed it):
-
-#### First Time
-```bash
-apt update && apt install -y git
-git clone git@gitlab.com:grassnotfound/WoW-Privatserver-Installscript.git /opt/wowserver-install
-cd /opt/wowserver-install/Azerothcore
-chmod +x install.sh
-./install.sh
-```
-
-#### Reopen
-```
-cd /opt/wowserver-install/Azerothcore
-./install.sh
-```
+Getting it onto the box and the run order: see [../README.md](../README.md).
+`install.sh` needs the `Control/` folder next to it.
 
 ## Prerequisites
 

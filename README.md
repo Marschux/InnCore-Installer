@@ -1,61 +1,52 @@
 # WoW Privatserver Installscript
 
-Install scripts for WoW private server cores.
+Install-Skripte für WoW-Privatserver-Cores.
 
-Currently covers:
+Aktuell abgedeckt:
 
-- [`Azerothcore/`](Azerothcore/) - combined install script for AzerothCore WotLK (Authserver/Worldserver/Bothserver), see `Azerothcore/install.md`
-
-Die Control-Menüs gehören direkt zur AzerothCore-Installation und liegen unter
-`Azerothcore/Control/`.
+- [`Azerothcore/`](Azerothcore/) – kombiniertes Install-Skript für AzerothCore
+  WotLK (Authserver / Worldserver / Bothserver) inkl. Control-Menüs
+  (`Azerothcore/Control/`). Menü-Übersicht und First-Start-Ablauf:
+  [`Azerothcore/install.md`](Azerothcore/install.md).
 
 ## Verwendung
 
-Das Script wird auf einem frischen Debian-13-LXC als `root` ausgeführt. Die
-eigenen Vorbereitungen des LXC, zum Beispiel Netzwerk, Notizen und Snapshot,
-sollten vorher abgeschlossen sein.
+Auf einem frischen Debian-13-LXC als `root`. Eigene LXC-Vorbereitung (Netzwerk,
+Notizen, Snapshot) sollte vorher abgeschlossen sein.
 
 ### Erstmalige Installation
 
-Das Repository wird direkt in den vorgesehenen Installationsordner geklont.
+Benötigt wird `install.sh` **mit** dem `Control/`-Ordner daneben – am
+einfachsten den kompletten `Azerothcore/`-Ordner klonen:
 
 ```bash
 apt update && apt install -y git
-git clone git@gitlab.com:grassnotfound/WoW-Privatserver-Installscript.git /opt/wowserver-install
-cd /opt/wowserver-install/Azerothcore
-chmod +x install.sh
+git clone git@gitlab.com:grassnotfound/WoW-Privatserver-Installscript.git /tmp/wpi
+sudo cp -r /tmp/wpi/Azerothcore /opt/wowserver-install
+rm -rf /tmp/wpi
+chmod +x /opt/wowserver-install/install.sh /opt/wowserver-install/Control/*.sh
+cd /opt/wowserver-install
 ./install.sh
 ```
 
-Im Menü:
+`/opt` bewusst statt `/root` – Basic System sperrt root und erstellt `admin`;
+ein Checkout unter `/root` (Modus 700) wäre danach für `admin` nicht mehr
+erreichbar. Der Ordner muss für den späteren Server-Owner lesbar sein
+(`chmod -R a+rX`), sonst kann „Update Control scripts" den Checkout nicht lesen.
 
-```text
-1) Basic System
-```
+### Reihenfolge
 
-Der erste Installationspunkt fragt alle benötigten Angaben am Anfang ab. Dazu
-gehören die Zeitzone sowie Benutzername und Passwort des Administrationskontos.
-Der beim Erstellen des LXC gesetzte Hostname bleibt unverändert. Danach läuft
-die Einrichtung des Basissystems durch.
-
-Vor dem Sperren des Root-Passworts muss die SSH-Anmeldung mit dem neuen
-Administrationskonto und `sudo -i` in einem zweiten Terminal getestet werden.
+1. `1) Basic System` – fragt alle Angaben (Zeitzone, Admin-User + Passwort) am
+   Anfang ab, richtet dann Grundsystem, MOTD, SSH und Fail2Ban ein.
+   **Vor** dem Sperren des Root-Passworts die SSH-Anmeldung als `admin` +
+   `sudo -i` in einem zweiten Terminal testen.
+2. Danach eigene Installationen / Dienste / Anpassungen ergänzen.
+3. `2) Authserver` / `3) Worldserver` (oder `4) Bothserver`, wenn beide auf
+   einer LXC). Das Control-Menü wird am Ende jeweils optional angeboten, oder
+   später über `5) Control`.
 
 ### Script erneut öffnen
 
 ```bash
-cd /opt/wowserver-install/Azerothcore
-./install.sh
+cd /opt/wowserver-install && ./install.sh
 ```
-
-Nach dem Basic System können die weiteren Menüpunkte für Authserver oder
-Worldserver ausgeführt werden. Bothserver ist nur erforderlich, wenn Auth- und
-Worldserver auf derselben LXC betrieben werden sollen. Die Control-Menüs können am Ende
-der jeweiligen Serverinstallation optional eingerichtet oder später über
-Menüpunkt 5 installiert werden.
-
-Eigene Installationen, Dienste und projektspezifische Anpassungen müssen nach
-dem Basissystem ergänzt werden.
-
-Die detaillierte Übersicht befindet sich in
-[`Azerothcore/install.md`](Azerothcore/install.md).

@@ -1,6 +1,6 @@
 # --- Local testing scratch (test LXC credentials/keys) ---
 Azerothcore/.testing/
-Azerothcore/testing-notes.md
+testing-notes.md
 
 # --- Backups and exports ---
 *.bak

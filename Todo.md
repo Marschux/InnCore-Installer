@@ -4,17 +4,15 @@ Aus zwei kompletten Testbench-Durchläufen (echter Build, Debian 13).
 
 ## Offen
 
-### 1. Doku-Überschneidung `README.md` ↔ `Azerothcore/install.md`
-Root-`README.md` (Deutsch) und `Azerothcore/install.md` (Englisch) beschreiben
-beide Menü / Usage / First-Start, teils mit abweichenden Pfaden
-(`/opt/wowserver-install` vs `/opt/wowserver-install/Azerothcore`,
-`cp install.sh` vs voller Clone). Eine als Kurzverweis auf die andere machen,
-oder klar aufteilen (README = Einstieg, install.md = Details).
-
 ## Erledigt
 
 - [x] Step-Nummerierung `run_basic_system` fortlaufend (7 = Lock root, auth
       Final = 8, world Final = 9).
+- [x] Doku-Überschneidung README ↔ install.md: aufgeteilt. README (root, DE) =
+      Einstieg + Install-Reihenfolge (ein konsistenter Weg: `Azerothcore/` nach
+      `/opt/wowserver-install` kopieren). install.md = Menü-Tabelle,
+      Prerequisites, Control-Layout, First-Start. install.md verweist für die
+      Install-Schritte auf README.
 - [x] `update_control` robuster → `update_control_scripts()` in common.sh:
       `git -C <checkout> pull` (safe.directory='*'), kein `sudo` mehr (SCRIPT_DIR
       gehört dem Menü-User), klare Fehlermeldung mit Fix wenn der Checkout nicht
