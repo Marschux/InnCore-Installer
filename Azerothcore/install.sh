@@ -21,6 +21,12 @@
 
 set -euo pipefail
 
+# Every apt call in this script is non-interactive. Reaches apt directly when the
+# script runs as root (the documented way). run_install_deps() additionally
+# flips debconf's own frontend for the passwordless-sudo-as-user case where this
+# export is stripped at acore.sh's inner sudo.
+export DEBIAN_FRONTEND=noninteractive
+
 # Resolve absolutely while the cwd is still correct (later steps 'cd build')
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
