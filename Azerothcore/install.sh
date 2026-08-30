@@ -14,7 +14,7 @@
 #    (DB password, client-data extraction, and hardware-specific tuning)     #
 #    files, verifying SSH login) it pauses and asks you to confirm before    #
 #    continuing. Automatic MySQL tuning and the final menu start flow are    #
-#    flow are intentionally NOT part of this script - see install.md.       #
+#    flow are intentionally NOT part of this script - see ../README.md.      #
 #                                                                              #
 ################################################################################
 
