@@ -16,14 +16,7 @@ AUTH_CONF="${AUTH_CONF:-$ACORE_DIR/env/dist/etc/authserver.conf}"
 AUTH_SESSION="${AUTH_SESSION:-auth-session}"
 AUTH_SERVICE_NAME="${AUTH_SERVICE_NAME:-azerothcore-auth.service}"
 
-update_control() {
-    require_path "$CONTROL_SOURCE_DIR/common.sh" || return 1
-    sudo install -m 0755 "$CONTROL_SOURCE_DIR/common.sh" "$SCRIPT_DIR/common.sh"
-    sudo install -m 0755 "$CONTROL_SOURCE_DIR/auth-menu.sh" "$SCRIPT_DIR/auth-menu.sh"
-    sudo install -m 0755 "$CONTROL_SOURCE_DIR/clean-build.sh" "$SCRIPT_DIR/clean-build.sh"
-    sudo chown "$SERVER_USER:$SERVER_USER" "$SCRIPT_DIR"/*.sh
-    echo "Auth Control scripts updated."
-}
+update_control() { update_control_scripts auth-menu.sh; }
 
 start_auth()   { server_start authserver "$AUTH_ENGINE" "$AUTH_BINARY" "$AUTH_CONF" "$AUTH_SESSION"; }
 stop_auth()    { server_stop authserver "$AUTH_SESSION" "" 120; }

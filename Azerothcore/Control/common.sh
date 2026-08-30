@@ -40,6 +40,31 @@ run_as_owner() {
 
 git_owner() { run_as_owner git -C "$ACORE_DIR" "$@"; }
 
+# Refresh the installed Control scripts from the repo checkout (CONTROL_SOURCE_DIR).
+# Pulls first when the checkout is a git repo. Fails loudly with the fix when the
+# checkout is not readable by the server user (e.g. cloned into a 700 home).
+update_control_scripts() {   # update_control_scripts <menu-basename>
+    local src="$CONTROL_SOURCE_DIR" f
+    if [ ! -r "$src/common.sh" ]; then
+        echo "Cannot read the repo checkout at:"
+        echo "  $src"
+        echo "Re-clone it somewhere $USER can read (e.g. under /opt, then"
+        echo "'sudo chmod -R a+rX <dir>') and set CONTROL_SOURCE_DIR in"
+        echo "  $SCRIPT_DIR/control.conf"
+        return 1
+    fi
+    if git -C "$src" rev-parse --git-dir >/dev/null 2>&1; then
+        echo "Pulling latest from $src ..."
+        git -C "$src" -c safe.directory='*' pull --ff-only \
+            || echo "(git pull failed - installing the files as they are)"
+    fi
+    # $SCRIPT_DIR is owned by the server user (this menu runs as them), no sudo.
+    for f in common.sh clean-build.sh "$1"; do
+        install -m 0755 "$src/$f" "$SCRIPT_DIR/$f"
+    done
+    echo "Control scripts updated from $src"
+}
+
 current_branch() {
     local b
     b="$(git_owner rev-parse --abbrev-ref HEAD 2>/dev/null)"

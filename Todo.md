@@ -4,43 +4,32 @@ Aus zwei kompletten Testbench-Durchläufen (echter Build, Debian 13).
 
 ## Offen
 
-### 1. `update_control` / `CONTROL_SOURCE_DIR` robuster machen
-`update_control` liest die neuen Skripte aus dem Repo-Checkout
-(`CONTROL_SOURCE_DIR`). Läuft das Menü als SERVER_USER und liegt der Checkout in
-einem 700-Home, schlägt es fehl. Es gibt jetzt eine Warnung beim Install, aber
-sauberer wäre: bei Install die Skript-Quellen zusätzlich nach `$target/.src/`
-kopieren und `update_control` von dort ziehen (dann checkout-unabhängig), bzw.
-`update_control` macht selbst `git -C <checkout> pull` + Copy.
-
-### 2. Doku-Überschneidung `README.md` ↔ `Azerothcore/install.md`
+### 1. Doku-Überschneidung `README.md` ↔ `Azerothcore/install.md`
 Root-`README.md` (Deutsch) und `Azerothcore/install.md` (Englisch) beschreiben
 beide Menü / Usage / First-Start, teils mit abweichenden Pfaden
 (`/opt/wowserver-install` vs `/opt/wowserver-install/Azerothcore`,
 `cp install.sh` vs voller Clone). Eine als Kurzverweis auf die andere machen,
 oder klar aufteilen (README = Einstieg, install.md = Details).
 
-### 3. `run_worldserver` Schritt 3: `conf/dist/config.sh` vs `conf/config.sh`
-`sed` setzt `OSDISTRO` in `conf/dist/config.sh`, aber `acore.sh` liest zur
-Laufzeit `conf/config.sh` und meldet
-„NOTICE: file <.../conf/config.sh> not found, we use default configuration only".
-Build lief trotzdem durch (dist-Datei reicht für install-deps). Prüfen ob das
-für andere `acore.sh`-Schritte relevant ist, ggf. `cp conf/dist/config.sh
-conf/config.sh` nach dem `sed`.
-
-### 4. `values/*.conf` einmal vollständig gegen AC-Defaults gegenprüfen
-AC-Startup validiert selbst und meldet Fehler — bisher nur `CharactersPerRealm`
-aufgefallen (gefixt: 50→10). Trotzdem einmal alle Keys/Werte gegen die aktuellen
-`.conf.dist` + AC-Validatoren durchgehen (aus InnControl übernommen, dort ggf.
-weitere veraltete Werte).
-
 ## Erledigt
 
 - [x] Step-Nummerierung `run_basic_system` fortlaufend (7 = Lock root, auth
       Final = 8, world Final = 9).
+- [x] `update_control` robuster → `update_control_scripts()` in common.sh:
+      `git -C <checkout> pull` (safe.directory='*'), kein `sudo` mehr (SCRIPT_DIR
+      gehört dem Menü-User), klare Fehlermeldung mit Fix wenn der Checkout nicht
+      lesbar ist. Beide Pfade getestet.
 - [x] Priority-Warnung des worldserver → `ProcessPriority = 0` in
       values_world.conf (`ProcessPriority=1` versucht `setpriority(-15)`, was als
       non-root scheitert → ERROR-Zeile). `Nice=-5` in der Autostart-Unit für den
       echten Boost (greift auf sauberem Boot). Getestet: keine ERROR-Zeile mehr.
+- [x] `run_worldserver` `conf/config.sh`-NOTICE: harmlos. `acore.sh`
+      (`acore_common_loadConfig`) sourced IMMER `conf/dist/config.sh` zuerst
+      (das unser `sed` editiert), `conf/config.sh` ist nur optionales Overlay.
+      Keine Änderung nötig.
+- [x] values-Audit gegen live-.conf: alle Keys aus values_auth/world/playerbots
+      existieren im Ziel, 0 Validation-Warnungen beim worldserver-Start.
+      Einzig `CharactersPerRealm` war offen (gefixt).
 - [x] whiptail-Dialog bei `install-deps` → `run_install_deps()`: debconf-Werte
       preseeden + `debconf/frontend` temporär auf `Noninteractive` (survivt den
       sudo-Boundary, `/etc/environment` tut das auf Debian 13 NICHT) +
@@ -55,7 +44,7 @@ weitere veraltete Werte).
       renummeriert (world 0-14, auth 0-12). Getestet inkl. Playerbots-Hänger.
 - [x] Leere Account/Realm-Liste → `list_table()` → „(none)".
 - [x] Warnung wenn SERVER_USER `CONTROL_SOURCE_DIR` nicht lesen kann
-      (siehe Offen #1 für die volle Lösung).
+
 - [x] Server-Tree nach Build `chown -R OWNER` — Menü kann Backups/git schreiben.
 - [x] `apply_values`: Werte verbatim schreiben (Quote-Bug bei inneren Quotes
       behoben, z.B. `Appender.Console`).

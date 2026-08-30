@@ -18,14 +18,7 @@ WORLD_SESSION="${WORLD_SESSION:-world-session}"
 WORLD_SERVICE_NAME="${WORLD_SERVICE_NAME:-azerothcore-world.service}"
 WORLD_TIMER_NAME="${WORLD_TIMER_NAME:-azerothcore-world-restart.timer}"
 
-update_control() {
-    require_path "$CONTROL_SOURCE_DIR/common.sh" || return 1
-    sudo install -m 0755 "$CONTROL_SOURCE_DIR/common.sh" "$SCRIPT_DIR/common.sh"
-    sudo install -m 0755 "$CONTROL_SOURCE_DIR/world-menu.sh" "$SCRIPT_DIR/world-menu.sh"
-    sudo install -m 0755 "$CONTROL_SOURCE_DIR/clean-build.sh" "$SCRIPT_DIR/clean-build.sh"
-    sudo chown "$SERVER_USER:$SERVER_USER" "$SCRIPT_DIR"/*.sh
-    echo "World Control scripts updated."
-}
+update_control() { update_control_scripts world-menu.sh; }
 
 start_world()   { server_start worldserver "$WORLD_ENGINE" "$WORLD_BINARY" "$WORLD_CONF" "$WORLD_SESSION"; }
 stop_world()    { server_stop worldserver "$WORLD_SESSION" "server shutdown 30" 180; }
