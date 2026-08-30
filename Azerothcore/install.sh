@@ -7,14 +7,15 @@
 #      1) Basic System                                                        #
 #      2) Authserver      - build only                                       #
 #      3) Worldserver     - build only                                       #
-#      4) Bothserver      - Auth + World, one LXC, build only #
+#      4) Bothserver      - Auth + World, one LXC, build only                 #
+#      5) Control         - install the Auth/World management menus           #
+#      6) MySQL            - install and configure MySQL only                 #
 #                                                                              #
-#    This script mirrors the guides step for step. It is NOT fully           #
-#    unattended: at points where the guides require a manual decision        #
-#    (DB password, client-data extraction, and hardware-specific tuning)     #
-#    files, verifying SSH login) it pauses and asks you to confirm before    #
-#    continuing. Automatic MySQL tuning and the final menu start flow are    #
-#    flow are intentionally NOT part of this script - see ../README.md.      #
+#    This script mirrors the guides step for step. It is NOT fully            #
+#    unattended: at points where the guides require a manual decision         #
+#    (DB password, client-data extraction) it pauses and asks you to          #
+#    confirm. The final menu start flow is not part of this script -          #
+#    see ../README.md.                                                        #
 #                                                                              #
 ################################################################################
 
