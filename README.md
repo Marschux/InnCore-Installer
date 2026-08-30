@@ -34,31 +34,12 @@ chmod +x acore-install.sh Control/*.sh
 ./acore-install.sh
 ```
 
-Use `/opt`, not `/root`. Basic System locks the root account and creates the
-`admin` user, and `admin` can't get into `/root` afterwards. The folder also
-has to stay readable for the user that will run the server, so that the
-"Update Control scripts" menu entry can find it:
-
-```bash
-sudo chmod -R a+rX /opt/wowserver-install
-```
-
 To open the menu again later:
 
 ```bash
 cd /opt/wowserver-install && ./acore-install.sh
 ```
 
-## Order of steps
-
-1. **Basic System.** It asks for the timezone and the admin username/password
-   at the start, then does everything on its own. Before it locks the root
-   password, open a second terminal and check that you can log in as `admin`
-   and run `sudo -i`.
-2. Install anything else you need on the box (your own services, tweaks, etc.).
-3. **Authserver / Worldserver** (or **Bothserver** if both live on one LXC).
-   At the end of each, it offers to install the Control menu. You can also do
-   that later with menu entry 5.
 
 ## Control menus
 
