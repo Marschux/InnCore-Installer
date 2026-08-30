@@ -47,6 +47,14 @@ target are reported and skipped. Copied on install, never overwritten by
 "Update Control scripts", so operator edits survive an update. The world menu's
 "Edit any .conf" also covers `worldserver.conf` plus any module conf.
 
+## Adding modules to a worldserver
+
+World menu -> Build tools -> "Add a module": prompts for the module's git URL,
+clones it into `modules/`, warns if it ships `.sql`, then rebuilds. The module
+`.conf.dist` is copied to `env/dist/etc/modules/` by the build. Import any SQL
+the module ships yourself (check its README for the target DB), then edit its
+conf via "Edit any .conf".
+
 ## First start via `authmenu` / `worldmenu`
 
 The Control menus are offered at the end of items 2/3/4 (or install later via
