@@ -128,23 +128,6 @@ apply_playerbots_values() {
     case "$r" in y|Y|j|J) restart_world ;; *) echo "Not restarted - changes apply on next restart." ;; esac
 }
 
-add_module() {
-    local url name dir
-    read -rp "Module git URL: " url
-    [ -n "$url" ] || { echo "No URL."; return 1; }
-    name="$(basename "$url" .git)"
-    dir="$ACORE_DIR/modules/$name"
-    [ -e "$dir" ] && { echo "$dir already exists."; return 1; }
-    git clone "$url" "$dir" || return 1
-    echo ""
-    echo "Cloned to $dir"
-    find "$dir" -name '*.sql' -print -quit 2>/dev/null | grep -q . \
-        && echo -e "${YELLOW}This module ships SQL - check its README for which DB to import.${RESET}"
-    echo ""
-    read -rp "Build and install now? [y/N]: " b
-    case "$b" in y|Y|j|J) safe_build "$ACORE_DIR/build" ;; *) echo "Run Build tools -> [2] when ready. The module .conf lands in env/dist/etc/modules/ on install." ;; esac
-}
-
 build_menu() {
     while true; do
         clear
@@ -153,15 +136,13 @@ build_menu() {
         echo -e "  ${COLOR_BUILD}[1]${RESET}  Pull git updates (core + Playerbots)"
         echo -e "  ${COLOR_BUILD}[2]${RESET}  Build and install"
         echo -e "  ${COLOR_BUILD}[3]${RESET}  Clean build directory"
-        echo -e "  ${COLOR_BUILD}[4]${RESET}  Add a module (git clone + build)"
         echo -e "  ${COLOR_BUILD}[0]${RESET}  Back"
         echo "----------------------------------------------------------------------------"
-        read -rp "🔹  Choice [0-4]: " choice
+        read -rp "🔹  Choice [0-3]: " choice
         case "$choice" in
             1) run_step pull_updates ;;
             2) run_step safe_build "$ACORE_DIR/build" ;;
             3) run_step "$SCRIPT_DIR/clean-build.sh" "$ACORE_DIR" ;;
-            4) run_step add_module ;;
             0) return ;;
             *) echo "Invalid option."; sleep 1 ;;
         esac
