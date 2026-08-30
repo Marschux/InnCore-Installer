@@ -84,7 +84,7 @@ check_disk() {
 #   1. Preseed the answers via debconf (mysql-8.4-lts, not 9.x which dropped
 #      mysql_native_password).
 #   2. Force debconf non-interactive. acore.sh runs apt directly when it is
-#      already root (our normal case: install.sh started via sudo), so exporting
+#      already root (our normal case: script started via sudo), so exporting
 #      DEBIAN_FRONTEND is enough there. For the passwordless-sudo-as-user case
 #      that env is stripped at acore's inner sudo, so also flip debconf's own
 #      frontend setting for the duration and restore it afterwards.
@@ -638,7 +638,7 @@ run_authserver() {
     cp "$AUTH_DIR/env/dist/etc/authserver.conf.dist" "$AUTH_DIR/env/dist/etc/authserver.conf"
     echo "authserver.conf created: $AUTH_DIR/env/dist/etc/authserver.conf"
 
-    # The clone/build ran as whoever started install.sh (root on a fresh LXC),
+    # The clone/build ran as whoever started acore-install.sh (root on a fresh LXC),
     # so everything below AUTH_DIR is root-owned. authmenu runs as AUTH_OWNER and
     # must be able to write configs, backups and git pulls here.
     sudo chown -R "$AUTH_OWNER:$AUTH_OWNER" "$AUTH_DIR"

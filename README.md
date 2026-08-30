@@ -23,7 +23,7 @@ jedem Build den freien Platz und warnt.
 
 ### Erstmalige Installation
 
-`install.sh` **mit** dem `Control/`-Ordner daneben – am einfachsten den
+`acore-install.sh` **mit** dem `Control/`-Ordner daneben – am einfachsten den
 kompletten `Azerothcore/`-Ordner klonen:
 
 ```bash
@@ -31,9 +31,9 @@ apt update && apt install -y git
 git clone git@gitlab.com:grassnotfound/WoW-Privatserver-Installscript.git /tmp/wpi
 sudo cp -r /tmp/wpi/Azerothcore /opt/wowserver-install
 rm -rf /tmp/wpi
-chmod +x /opt/wowserver-install/install.sh /opt/wowserver-install/Control/*.sh
+chmod +x /opt/wowserver-install/acore-install.sh /opt/wowserver-install/Control/*.sh
 cd /opt/wowserver-install
-./install.sh
+./acore-install.sh
 ```
 
 `/opt` bewusst statt `/root` – Basic System sperrt root und erstellt `admin`;
@@ -51,7 +51,7 @@ erreichbar. Der Ordner muss für den späteren Server-Owner lesbar sein
 3. `2) Authserver` / `3) Worldserver` (oder `4) Bothserver`). Das Control-Menü
    wird am Ende jeweils optional angeboten, oder später über `5) Control`.
 
-Script erneut öffnen: `cd /opt/wowserver-install && ./install.sh`
+Script erneut öffnen: `cd /opt/wowserver-install && ./acore-install.sh`
 
 ## Control-Menüs
 
