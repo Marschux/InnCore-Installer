@@ -2,7 +2,8 @@
 
 Scripts to set up an AzerothCore WotLK server on a Debian 13 LXC.
 
-The main script is [`acore-install.sh`](acore-install.sh). It has a menu:
+The main script is [`Azerothcore/acore-install.sh`](Azerothcore/acore-install.sh).
+It has a menu:
 
 | Menu | What it does |
 |------|--------------|
@@ -23,13 +24,13 @@ Run menu 1 first. Then 2, 3, or 4.
 
 ## Install
 
-Clone into `/opt`. The script needs the `Control/` folder sitting next to it,
-which the repo layout already gives you:
+The script needs the `Control/` folder sitting next to it, which the
+`Azerothcore/` folder already gives you. Clone into `/opt`:
 
 ```bash
 apt update && apt install -y git
 git clone https://gitlab.com/grassnotfound/WoW-Privatserver-Installscript.git /opt/wowserver-install
-cd /opt/wowserver-install
+cd /opt/wowserver-install/Azerothcore
 chmod +x acore-install.sh Control/*.sh
 ./acore-install.sh
 ```
@@ -37,7 +38,7 @@ chmod +x acore-install.sh Control/*.sh
 To open the menu again later:
 
 ```bash
-cd /opt/wowserver-install && ./acore-install.sh
+cd /opt/wowserver-install/Azerothcore && ./acore-install.sh
 ```
 
 
