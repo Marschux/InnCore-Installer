@@ -6,6 +6,18 @@ Aus zwei kompletten Testbench-Durchläufen (echter Build, Debian 13).
 
 ## Erledigt
 
+- [x] Aus InnControl übernommen (getestet):
+      - **Two-Side RBAC** `apply_two_side_rbac()` → authmenu Config `[4]`:
+        verknüpft RBAC-Permission 195 mit allen `Two side %`-Permissions in
+        acore_auth (die `AllowTwoSide.*`-Configs allein reichen nicht für
+        Cross-Faction). Idempotent.
+      - **Robustes git-update** `git_update()` → Build-Tools `[1]`: fetch +
+        ff-only; bei dirty tree / diverged → Status zeigen + Hard-Reset auf
+        origin/<branch> anbieten (statt stillem Fehlschlag). world zieht auch
+        das mod-playerbots-Modul.
+      - **LXC-Reboot** `reboot_lxc()` → authmenu `[13]` / worldmenu `[15]`:
+        REBOOT-Confirm → graceful `server_stop` → `systemctl reboot` (sudoers
+        um `systemctl reboot` erweitert, keine Passwortabfrage).
 - [x] Step-Nummerierung `run_basic_system` fortlaufend (7 = Lock root, auth
       Final = 8, world Final = 9).
 - [x] Doku-Überschneidung README ↔ install.md: aufgeteilt. README (root, DE) =
@@ -41,7 +53,7 @@ Aus zwei kompletten Testbench-Durchläufen (echter Build, Debian 13).
       `server_kill` in common.sh (TERM → 5s → KILL → session). Menüs
       renummeriert (world 0-14, auth 0-12). Getestet inkl. Playerbots-Hänger.
 - [x] Leere Account/Realm-Liste → `list_table()` → „(none)".
-- [x] Warnung wenn SERVER_USER `CONTROL_SOURCE_DIR` nicht lesen kann
+- [x] Warnung wenn SERVER_USER `CONTROL_SOURCE_DIR` nicht lesen kann.
 
 - [x] Server-Tree nach Build `chown -R OWNER` — Menü kann Backups/git schreiben.
 - [x] `apply_values`: Werte verbatim schreiben (Quote-Bug bei inneren Quotes
