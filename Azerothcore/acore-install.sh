@@ -644,7 +644,7 @@ run_authserver() {
     run_install_deps
     # OSDISTRO is only needed by install-deps; restore the tracked file so
     # later source updates via authmenu stay a clean fast-forward.
-    git -C "$AUTH_DIR" checkout -- conf/dist/config.sh
+    git -C "$AUTH_DIR" -c safe.directory='*' checkout -- conf/dist/config.sh || true
 
     step "4. Create and enter the build directory"
     mkdir -p build
@@ -703,7 +703,7 @@ run_worldserver() {
     cd "$WORLD_DIR"
     run_install_deps
     # See run_authserver: keep the checkout clean for later worldmenu updates.
-    git -C "$WORLD_DIR" checkout -- conf/dist/config.sh
+    git -C "$WORLD_DIR" -c safe.directory='*' checkout -- conf/dist/config.sh || true
 
     step "4. Create and enter the build directory"
     mkdir -p build
