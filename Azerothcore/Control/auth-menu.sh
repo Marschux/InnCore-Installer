@@ -151,12 +151,26 @@ build_menu() {
     done
 }
 
+# Realms registered in acore_auth.realmlist. Silent when the DB is unreachable
+# (not created yet, authserver never started) so the header never breaks.
+realm_header() {
+    read_login_database >/dev/null 2>&1 || return 0
+    local rows id name flag
+    rows="$(mysql_auth -N -s -e 'SELECT id, name, flag FROM realmlist ORDER BY id;' 2>/dev/null)"
+    [ -n "$rows" ] || return 0
+    echo -e "$(status_row 🌐 "Realms:")"
+    while IFS=$'\t' read -r id name flag; do
+        printf "     ${CYAN}%-3s${RESET} %-24s ${DIM}flag %s${RESET}\n" "$id" "$name" "$flag"
+    done <<< "$rows"
+}
+
 render_menu() {
     box_title "AZEROTHCORE - AUTHSERVER CONTROL"
     status_dot authserver "$AUTH_SESSION"
     autostart_dot "$AUTH_SERVICE_NAME"
     echo -e "$(status_row 📂 "Session:")${CYAN}${AUTH_SESSION}${RESET}"
     echo -e "$(status_row 🌿 "Branch:")${CYAN}$(current_branch)${RESET}"
+    realm_header
     hr
 
     menu_section "$COLOR_SERVER" "⚙️  SERVER CONTROL"
