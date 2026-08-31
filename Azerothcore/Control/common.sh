@@ -109,9 +109,15 @@ update_control_scripts() {   # update_control_scripts <menu-basename>
         echo "  $SCRIPT_DIR/control.conf"
         return 1
     fi
-    if git -C "$src" rev-parse --git-dir >/dev/null 2>&1; then
-        echo "Pulling latest from $src ..."
-        gitq "$src" pull --ff-only || echo "(git pull failed - installing the files as they are)"
+    if gitq "$src" rev-parse --git-dir >/dev/null 2>&1; then
+        local branch remote
+        branch="$(gitq "$src" rev-parse --abbrev-ref HEAD 2>/dev/null)"
+        remote="$(gitq "$src" remote get-url origin 2>/dev/null)"
+        echo "Pulling $branch from ${remote:-origin} ..."
+        gitq "$src" pull --ff-only origin "$branch" \
+            || echo "!! git pull failed - installing the files as they are on disk."
+    else
+        echo "!! $src is not a git checkout - installing whatever files are there."
     fi
     # $SCRIPT_DIR is owned by the server user (this menu runs as them), no sudo.
     for f in common.sh clean-build.sh "$1"; do
