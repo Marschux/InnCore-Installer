@@ -130,14 +130,12 @@ apply_playerbots_values() {
 
 build_menu() {
     while true; do
-        clear
-        echo -e "${COLOR_BUILD}${BOLD}🛠️  BUILD TOOLS${RESET}"
-        echo "----------------------------------------------------------------------------"
+        submenu_title "🛠️  BUILD TOOLS" "$COLOR_BUILD"
         echo -e "  ${COLOR_BUILD}[1]${RESET}  Pull git updates (core + Playerbots)"
         echo -e "  ${COLOR_BUILD}[2]${RESET}  Build and install"
         echo -e "  ${COLOR_BUILD}[3]${RESET}  Clean build directory"
         echo -e "  ${COLOR_BUILD}[0]${RESET}  Back"
-        echo "----------------------------------------------------------------------------"
+        echo ""; menu_footer
         read -rp "🔹  Choice [0-3]: " choice
         case "$choice" in
             1) run_step pull_updates ;;
@@ -151,9 +149,7 @@ build_menu() {
 
 config_menu() {
     while true; do
-        clear
-        echo -e "${COLOR_CONFIG}${BOLD}📝  CONFIG & MAINTENANCE${RESET}"
-        echo "----------------------------------------------------------------------------"
+        submenu_title "📝  CONFIG & MAINTENANCE" "$COLOR_CONFIG"
         echo -e "  ${COLOR_CONFIG}[1]${RESET}  Edit values_world.conf (summary)"
         echo -e "  ${COLOR_CONFIG}[2]${RESET}  Apply values_world.conf -> worldserver.conf"
         echo -e "  ${COLOR_CONFIG}[3]${RESET}  Edit values_playerbots.conf (summary)"
@@ -161,7 +157,7 @@ config_menu() {
         echo -e "  ${COLOR_CONFIG}[5]${RESET}  Edit any .conf (worldserver + module plugins)"
         echo -e "  ${COLOR_CONFIG}[6]${RESET}  Update Control scripts"
         echo -e "  ${COLOR_CONFIG}[0]${RESET}  Back"
-        echo "----------------------------------------------------------------------------"
+        echo ""; menu_footer
         read -rp "🔹  Choice [0-6]: " choice
         case "$choice" in
             1) "${EDITOR:-nano}" "$SCRIPT_DIR/values/values_world.conf" ;;
@@ -191,28 +187,27 @@ render_menu() {
     timer_dot
     echo -e "$(status_row 📂 "Session:")${CYAN}${WORLD_SESSION}${RESET}"
     echo -e "$(status_row 🌿 "Branch:")${CYAN}$(current_branch)${RESET}"
-    echo "----------------------------------------------------------------------------"
+    hr
 
     menu_section "$COLOR_SERVER" "⚙️  SERVER CONTROL"
     echo -e "  ${COLOR_SERVER}[1]${RESET}  🚀  Start server          ${COLOR_SERVER}[2]${RESET}  🛑  Stop server"
     echo -e "  ${COLOR_SERVER}[3]${RESET}  💥  ${RED}Kill server (force)${RESET}   ${COLOR_SERVER}[4]${RESET}  🔄  Restart server"
-    echo -e "  ${COLOR_SERVER}[5]${RESET}  🧿  Reload config         ${COLOR_SERVER}[6]${RESET}  📊  Server status"
+    echo -e "  ${COLOR_SERVER}[5]${RESET}  🧿  Reload config"
 
     menu_section "$COLOR_LOGS" "📄  LOGS & CONSOLE"
-    echo -e "  ${COLOR_LOGS}[7]${RESET}  💾  Save world            ${COLOR_LOGS}[8]${RESET}  🖥️  World console"
-    echo -e "  ${COLOR_LOGS}[9]${RESET}  📚  Tmux scrollback"
+    echo -e "  ${COLOR_LOGS}[6]${RESET}  💾  Save world            ${COLOR_LOGS}[7]${RESET}  🖥️  World console"
 
     menu_section "$COLOR_TOOLS" "🗄️  TOOLS"
-    echo -e "  ${COLOR_TOOLS}[10]${RESET} 🚀  Autostart             ${COLOR_TOOLS}[11]${RESET} ⏰  Daily restart timer"
-    echo -e "  ${COLOR_TOOLS}[12]${RESET} 🛠️  Build tools           ${COLOR_TOOLS}[13]${RESET} 👤  Delete account"
+    echo -e "  ${COLOR_TOOLS}[8]${RESET}  🚀  Autostart             ${COLOR_TOOLS}[9]${RESET}  ⏰  Daily restart timer"
+    echo -e "  ${COLOR_TOOLS}[10]${RESET} 🛠️  Build tools           ${COLOR_TOOLS}[11]${RESET} 👤  Delete account"
 
     menu_section "$COLOR_CONFIG" "📝  CONFIG & MAINTENANCE"
-    echo -e "  ${COLOR_CONFIG}[14]${RESET} 📝  Config & Control scripts"
+    echo -e "  ${COLOR_CONFIG}[12]${RESET} 📝  Config & Control scripts"
 
     menu_section "$COLOR_EXIT" "⏻  POWER & EXIT"
-    echo -e "  ${COLOR_EXIT}[15]${RESET} 🔁  Reboot LXC             ${COLOR_EXIT}[0]${RESET}  🚪  Exit menu"
+    echo -e "  ${COLOR_EXIT}[13]${RESET} 🔁  Reboot LXC             ${COLOR_EXIT}[0]${RESET}  🚪  Exit menu"
     echo ""
-    echo -e "${CYAN}════════════════════════════════════════════════════════════════════════════${RESET}"
+    menu_footer
 }
 
 menu() {
@@ -220,7 +215,7 @@ menu() {
     while true; do
         draw_menu render_menu
         echo ""
-        read -t 60 -rp "🔹  Select an option (0-15): " choice; rc=$?
+        read -t 60 -rp "🔹  Select an option (0-13): " choice; rc=$?
         [ "$rc" -gt 128 ] && continue
         case "$choice" in
             1) run_step start_world ;;
@@ -228,16 +223,14 @@ menu() {
             3) run_step kill_world ;;
             4) run_step restart_world ;;
             5) run_step reload_world ;;
-            6) run_step server_status worldserver "$WORLD_SESSION" ;;
-            7) run_step save_world ;;
-            8) clear; tmx attach -t "$WORLD_SESSION" 2>/dev/null || { echo "No active worldserver tmux session."; wait_for_user; } ;;
-            9) clear; tmx capture-pane -S -100000 -t "$WORLD_SESSION" -p 2>/dev/null || echo "No scrollback available."; wait_for_user ;;
-            10) run_step autostart_world ;;
-            11) run_step restart_timer ;;
-            12) build_menu ;;
-            13) run_step delete_account ;;
-            14) config_menu ;;
-            15) run_step reboot_lxc worldserver "$WORLD_SESSION" "server shutdown 30" ;;
+            6) run_step save_world ;;
+            7) clear; tmx attach -t "$WORLD_SESSION" 2>/dev/null || { echo "No active worldserver tmux session."; wait_for_user; } ;;
+            8) run_step autostart_world ;;
+            9) run_step restart_timer ;;
+            10) build_menu ;;
+            11) run_step delete_account ;;
+            12) config_menu ;;
+            13) run_step reboot_lxc worldserver "$WORLD_SESSION" "server shutdown 30" ;;
             0) clear; echo -e "${GREEN}👋  Worldserver menu closed.${RESET}"; exit 0 ;;
             *) echo "Invalid option."; sleep 1 ;;
         esac

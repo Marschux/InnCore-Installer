@@ -59,13 +59,11 @@ EOF
 
 account_menu() {
     while true; do
-        clear
-        echo -e "${COLOR_MANAGE}${BOLD}👤  ACCOUNT MANAGEMENT${RESET}"
-        echo "----------------------------------------------------------------------------"
+        submenu_title "👤  ACCOUNT MANAGEMENT" "$COLOR_MANAGE"
         echo -e "  ${COLOR_MANAGE}[1]${RESET}  List accounts"
         echo -e "  ${COLOR_MANAGE}[2]${RESET}  Delete account"
         echo -e "  ${COLOR_MANAGE}[0]${RESET}  Back"
-        echo "----------------------------------------------------------------------------"
+        echo ""; menu_footer
         read -rp "🔹  Choice [0-2]: " choice
         case "$choice" in
             1) list_table 'SELECT id, username, expansion, locked FROM account ORDER BY id;'; wait_for_user ;;
@@ -85,13 +83,11 @@ account_menu() {
 
 realm_menu() {
     while true; do
-        clear
-        echo -e "${COLOR_MANAGE}${BOLD}🌍  REALM MANAGEMENT${RESET}"
-        echo "----------------------------------------------------------------------------"
+        submenu_title "🌍  REALM MANAGEMENT" "$COLOR_MANAGE"
         echo -e "  ${COLOR_MANAGE}[1]${RESET}  List realms"
         echo -e "  ${COLOR_MANAGE}[2]${RESET}  Change realm address"
         echo -e "  ${COLOR_MANAGE}[0]${RESET}  Back"
-        echo "----------------------------------------------------------------------------"
+        echo ""; menu_footer
         read -rp "🔹  Choice [0-2]: " choice
         case "$choice" in
             1) list_table 'SELECT id, name, address, port, flag, gamebuild FROM realmlist ORDER BY id;'; wait_for_user ;;
@@ -117,16 +113,14 @@ apply_auth_values() {
 
 config_menu() {
     while true; do
-        clear
-        echo -e "${COLOR_CONFIG}${BOLD}📝  CONFIG & MAINTENANCE${RESET}"
-        echo "----------------------------------------------------------------------------"
+        submenu_title "📝  CONFIG & MAINTENANCE" "$COLOR_CONFIG"
         echo -e "  ${COLOR_CONFIG}[1]${RESET}  Edit values_auth.conf (summary)"
         echo -e "  ${COLOR_CONFIG}[2]${RESET}  Apply values_auth.conf -> authserver.conf"
         echo -e "  ${COLOR_CONFIG}[3]${RESET}  Edit authserver.conf (raw)"
         echo -e "  ${COLOR_CONFIG}[4]${RESET}  Apply cross-faction (two-side) RBAC"
         echo -e "  ${COLOR_CONFIG}[5]${RESET}  Update Control scripts"
         echo -e "  ${COLOR_CONFIG}[0]${RESET}  Back"
-        echo "----------------------------------------------------------------------------"
+        echo ""; menu_footer
         read -rp "🔹  Choice [0-5]: " choice
         case "$choice" in
             1) "${EDITOR:-nano}" "$SCRIPT_DIR/values/values_auth.conf" ;;
@@ -142,14 +136,12 @@ config_menu() {
 
 build_menu() {
     while true; do
-        clear
-        echo -e "${COLOR_BUILD}${BOLD}🛠️  BUILD TOOLS${RESET}"
-        echo "----------------------------------------------------------------------------"
+        submenu_title "🛠️  BUILD TOOLS" "$COLOR_BUILD"
         echo -e "  ${COLOR_BUILD}[1]${RESET}  Pull git updates"
         echo -e "  ${COLOR_BUILD}[2]${RESET}  Build and install"
         echo -e "  ${COLOR_BUILD}[3]${RESET}  Clean build directory"
         echo -e "  ${COLOR_BUILD}[0]${RESET}  Back"
-        echo "----------------------------------------------------------------------------"
+        echo ""; menu_footer
         read -rp "🔹  Choice [0-3]: " choice
         case "$choice" in
             1) run_step git_update "$ACORE_DIR" ;;
@@ -167,27 +159,26 @@ render_menu() {
     autostart_dot "$AUTH_SERVICE_NAME"
     echo -e "$(status_row 📂 "Session:")${CYAN}${AUTH_SESSION}${RESET}"
     echo -e "$(status_row 🌿 "Branch:")${CYAN}$(current_branch)${RESET}"
-    echo "----------------------------------------------------------------------------"
+    hr
 
     menu_section "$COLOR_SERVER" "⚙️  SERVER CONTROL"
     echo -e "  ${COLOR_SERVER}[1]${RESET}  🚀  Start server          ${COLOR_SERVER}[2]${RESET}  🛑  Stop server"
     echo -e "  ${COLOR_SERVER}[3]${RESET}  💥  ${RED}Kill server (force)${RESET}   ${COLOR_SERVER}[4]${RESET}  🔄  Restart server"
-    echo -e "  ${COLOR_SERVER}[5]${RESET}  📊  Server status"
 
-    menu_section "$COLOR_LOGS" "📄  LOGS & CONSOLE"
-    echo -e "  ${COLOR_LOGS}[6]${RESET}  🖥️  Auth console          ${COLOR_LOGS}[7]${RESET}  📚  Tmux scrollback"
+    menu_section "$COLOR_LOGS" "📄  CONSOLE"
+    echo -e "  ${COLOR_LOGS}[5]${RESET}  🖥️  Auth console"
 
     menu_section "$COLOR_TOOLS" "🗄️  TOOLS"
-    echo -e "  ${COLOR_TOOLS}[8]${RESET}  🚀  Autostart             ${COLOR_TOOLS}[9]${RESET}  🛠️  Build tools"
-    echo -e "  ${COLOR_TOOLS}[10]${RESET} 👤  Account management    ${COLOR_TOOLS}[11]${RESET} 🌍  Realm management"
+    echo -e "  ${COLOR_TOOLS}[6]${RESET}  🚀  Autostart             ${COLOR_TOOLS}[7]${RESET}  🛠️  Build tools"
+    echo -e "  ${COLOR_TOOLS}[8]${RESET}  👤  Account management    ${COLOR_TOOLS}[9]${RESET}  🌍  Realm management"
 
     menu_section "$COLOR_CONFIG" "📝  CONFIG & MAINTENANCE"
-    echo -e "  ${COLOR_CONFIG}[12]${RESET} 📝  Config & Control scripts"
+    echo -e "  ${COLOR_CONFIG}[10]${RESET} 📝  Config & Control scripts"
 
     menu_section "$COLOR_EXIT" "⏻  POWER & EXIT"
-    echo -e "  ${COLOR_EXIT}[13]${RESET} 🔁  Reboot LXC             ${COLOR_EXIT}[0]${RESET}  🚪  Exit menu"
+    echo -e "  ${COLOR_EXIT}[11]${RESET} 🔁  Reboot LXC             ${COLOR_EXIT}[0]${RESET}  🚪  Exit menu"
     echo ""
-    echo -e "${CYAN}════════════════════════════════════════════════════════════════════════════${RESET}"
+    menu_footer
 }
 
 menu() {
@@ -195,22 +186,20 @@ menu() {
     while true; do
         draw_menu render_menu
         echo ""
-        read -t 60 -rp "🔹  Select an option (0-13): " choice; rc=$?
+        read -t 60 -rp "🔹  Select an option (0-11): " choice; rc=$?
         [ "$rc" -gt 128 ] && continue
         case "$choice" in
             1) run_step start_auth ;;
             2) run_step stop_auth ;;
             3) run_step kill_auth ;;
             4) run_step restart_auth ;;
-            5) run_step server_status authserver "$AUTH_SESSION" ;;
-            6) clear; tmx attach -t "$AUTH_SESSION" 2>/dev/null || { echo "No active authserver tmux session."; wait_for_user; } ;;
-            7) clear; tmx capture-pane -S -100000 -t "$AUTH_SESSION" -p 2>/dev/null || echo "No scrollback available."; wait_for_user ;;
-            8) run_step autostart_auth ;;
-            9) build_menu ;;
-            10) account_menu ;;
-            11) realm_menu ;;
-            12) config_menu ;;
-            13) run_step reboot_lxc authserver "$AUTH_SESSION" ;;
+            5) clear; tmx attach -t "$AUTH_SESSION" 2>/dev/null || { echo "No active authserver tmux session."; wait_for_user; } ;;
+            6) run_step autostart_auth ;;
+            7) build_menu ;;
+            8) account_menu ;;
+            9) realm_menu ;;
+            10) config_menu ;;
+            11) run_step reboot_lxc authserver "$AUTH_SESSION" ;;
             0) clear; echo -e "${GREEN}👋  Authserver menu closed.${RESET}"; exit 0 ;;
             *) echo "Invalid option."; sleep 1 ;;
         esac

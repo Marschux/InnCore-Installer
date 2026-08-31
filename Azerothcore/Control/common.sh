@@ -142,13 +142,24 @@ menu_section() {
     echo -e "${1}${BOLD}${2}${RESET}"
 }
 
-box_title() {
-    local t="$1" w=74 pad rule
+box_title() {   # box_title <title> [color]
+    local t="$1" c="${2:-$CYAN}" w=74 pad rule
     rule="$(printf '═%.0s' $(seq 1 "$w"))"
     pad=$(( (w - ${#t}) / 2 ))
-    printf "${CYAN}╔%s╗${RESET}\n" "$rule"
-    printf "${CYAN}║${RESET}%*s${BOLD}${WHITE}%s${RESET}%*s${CYAN}║${RESET}\n" "$pad" "" "$t" "$((w - pad - ${#t}))" ""
-    printf "${CYAN}╚%s╝${RESET}\n" "$rule"
+    printf "${c}╔%s╗${RESET}\n" "$rule"
+    printf "${c}║${RESET}%*s${BOLD}${WHITE}%s${RESET}%*s${c}║${RESET}\n" "$pad" "" "$t" "$((w - pad - ${#t}))" ""
+    printf "${c}╚%s╝${RESET}\n" "$rule"
+}
+
+hr() { printf "${DIM}%s${RESET}\n" "$(printf '─%.0s' $(seq 1 76))"; }
+menu_footer() { printf "${CYAN}%s${RESET}\n" "$(printf '═%.0s' $(seq 1 76))"; }
+
+# Header for a nested submenu: same box as the main screen, tinted to the
+# section colour, followed by a blank line.
+submenu_title() {   # submenu_title <title> <color>
+    clear
+    box_title "$1" "$2"
+    echo ""
 }
 
 # Repaint without a visible clear: cursor home, print the frame with
