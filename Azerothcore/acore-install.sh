@@ -150,7 +150,8 @@ offer_control_installation() {
 # After a build, drop straight into the matching management menu instead of
 # returning to the install menu. Only when its wrapper was actually installed.
 offer_menu_launch() {
-    local role="$1" wrapper="/usr/local/bin/${role}menu" ans
+    local role="$1"
+    local wrapper="/usr/local/bin/${role}menu" ans
     [ -x "$wrapper" ] || return
     read -rp "Open ${role}menu now? [Y/n]: " ans
     case "$ans" in
