@@ -257,6 +257,16 @@ install_control_standalone_role() {
     install_control_role "$role" "${target:-$default_dir}" "${acore:-$default_acore}" "${owner:-$default_owner}"
 }
 
+# Default folder owner: the admin user from menu 1 (item 1 writes it), else
+# whoever ran sudo, else the current user.
+default_owner() {
+    if [ -s /etc/acore-install.admin ]; then
+        head -n1 /etc/acore-install.admin
+    else
+        echo "${SUDO_USER:-$(whoami)}"
+    fi
+}
+
 require_root_or_sudo() {
     if [ "$EUID" -ne 0 ] && ! sudo -n true 2>/dev/null; then
         warn "This script needs root or passwordless sudo for most steps."
@@ -432,7 +442,7 @@ collect_basic_inputs() {
 
 collect_auth_inputs() {
     local DEFAULT_OWNER
-    DEFAULT_OWNER="${SUDO_USER:-$(whoami)}"
+    DEFAULT_OWNER="$(default_owner)"
     read -rp "Owner for the Authserver folder [$DEFAULT_OWNER]: " AUTH_OWNER
     AUTH_OWNER=${AUTH_OWNER:-$DEFAULT_OWNER}
     read -rp "Installation path for the Authserver [/opt/ac-authserver]: " AUTH_DIR
@@ -443,7 +453,7 @@ collect_auth_inputs() {
 
 collect_world_inputs() {
     local DEFAULT_OWNER
-    DEFAULT_OWNER="${SUDO_USER:-$(whoami)}"
+    DEFAULT_OWNER="$(default_owner)"
     read -rp "Owner for the Worldserver folder [$DEFAULT_OWNER]: " WORLD_OWNER
     WORLD_OWNER=${WORLD_OWNER:-$DEFAULT_OWNER}
     read -rp "Installation path for the Worldserver [/opt/ac-worldserver]: " WORLD_DIR
@@ -566,6 +576,7 @@ run_basic_system() {
     printf '%s:%s\n' "$ADMIN_USER" "$ADMIN_PASS" | chpasswd
     unset ADMIN_PASS
     usermod -aG sudo "$ADMIN_USER"
+    printf '%s\n' "$ADMIN_USER" > /etc/acore-install.admin
 
     step "4. Dynamic MOTD"
     install_motd_template
