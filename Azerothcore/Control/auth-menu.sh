@@ -174,17 +174,19 @@ build_menu() {
 # (not created yet, authserver never started) so the header never breaks.
 realm_header() {
     read_login_database >/dev/null 2>&1 || return 0
-    local rows id name address icon flag timezone sec
-    rows="$(mysql_auth -N -s -e "SELECT id, name, address,
+    local rows id name address port icon flag tz sec
+    rows="$(mysql_auth -N -s -e "SELECT id, name, address, port,
                 CASE icon WHEN 1 THEN 'PvP' WHEN 6 THEN 'RP' WHEN 8 THEN 'RP PvP' ELSE 'Normal' END,
                 flag, timezone,
                 CASE allowedSecurityLevel WHEN 1 THEN 'Mod' WHEN 2 THEN 'GM' WHEN 3 THEN 'Admin' ELSE 'Player' END
              FROM realmlist ORDER BY id;" 2>/dev/null)"
     [ -n "$rows" ] || return 0
     echo -e "$(status_row 🌐 "Realms:")"
-    while IFS=$'\t' read -r id name address icon flag timezone sec; do
-        printf "     ${CYAN}%-3s${RESET} %-20s ${DIM}%-16s %-8s flag %-3s tz %-3s %s${RESET}\n" \
-            "$id" "$name" "$address" "$icon" "$flag" "$timezone" "$sec"
+    printf "     ${DIM}%-3s %-18.18s %-7s %-22.22s %-4s %-4s %s${RESET}\n" \
+        ID Name Type Address Flag TZ Security
+    while IFS=$'\t' read -r id name address port icon flag tz sec; do
+        printf "     ${CYAN}%-3s${RESET} %-18.18s ${DIM}%-7s${RESET} %-22.22s ${DIM}%-4s %-4s %s${RESET}\n" \
+            "$id" "$name" "$icon" "${address}:${port}" "$flag" "$tz" "$sec"
     done <<< "$rows"
 }
 
