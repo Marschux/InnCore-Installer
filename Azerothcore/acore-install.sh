@@ -642,6 +642,9 @@ run_authserver() {
     echo "Detected distro: $OSDISTRO"
     sed -i "s/^#\s*OSDISTRO=.*/OSDISTRO=\"$OSDISTRO\"/" "$AUTH_DIR/conf/dist/config.sh"
     run_install_deps
+    # OSDISTRO is only needed by install-deps; restore the tracked file so
+    # later source updates via authmenu stay a clean fast-forward.
+    git -C "$AUTH_DIR" checkout -- conf/dist/config.sh
 
     step "4. Create and enter the build directory"
     mkdir -p build
@@ -699,6 +702,8 @@ run_worldserver() {
     sed -i "s/^#\s*OSDISTRO=.*/OSDISTRO=\"$OSDISTRO\"/" "$WORLD_DIR/conf/dist/config.sh"
     cd "$WORLD_DIR"
     run_install_deps
+    # See run_authserver: keep the checkout clean for later worldmenu updates.
+    git -C "$WORLD_DIR" checkout -- conf/dist/config.sh
 
     step "4. Create and enter the build directory"
     mkdir -p build
