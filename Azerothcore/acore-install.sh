@@ -147,6 +147,18 @@ offer_control_installation() {
     echo "Usage: run authmenu or worldmenu."
 }
 
+# After a build, drop straight into the matching management menu instead of
+# returning to the install menu. Only when its wrapper was actually installed.
+offer_menu_launch() {
+    local role="$1" wrapper="/usr/local/bin/${role}menu" ans
+    [ -x "$wrapper" ] || return
+    read -rp "Open ${role}menu now? [Y/n]: " ans
+    case "$ans" in
+        n|N|no|NO) return ;;
+        *) exec sudo "$wrapper" ;;
+    esac
+}
+
 # Installs the Control menu for one role. All four arguments are required;
 # menu item 5 collects them interactively, the post-build flow passes what was
 # gathered up front.
@@ -813,12 +825,14 @@ main() {
                 collect_database_password
                 ask_install_control auth
                 run_authserver
+                offer_menu_launch auth
                 ;;
             3)
                 collect_world_inputs
                 collect_database_password
                 ask_install_control world
                 run_worldserver
+                offer_menu_launch world
                 ;;
             4)
                 collect_auth_inputs
@@ -826,6 +840,8 @@ main() {
                 collect_database_password
                 ask_install_control both
                 run_bothserver
+                offer_menu_launch auth
+                offer_menu_launch world
                 ;;
             5)
                 step "5. Install AzerothCore Control"
