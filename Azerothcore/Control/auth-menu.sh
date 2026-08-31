@@ -61,13 +61,28 @@ account_menu() {
     while true; do
         submenu_title "👤  ACCOUNT MANAGEMENT" "$COLOR_MANAGE"
         echo -e "  ${COLOR_MANAGE}[1]${RESET}  List accounts"
-        echo -e "  ${COLOR_MANAGE}[2]${RESET}  Delete account"
+        echo -e "  ${COLOR_MANAGE}[2]${RESET}  Create account"
+        echo -e "  ${COLOR_MANAGE}[3]${RESET}  Delete account"
         echo -e "  ${COLOR_MANAGE}[0]${RESET}  Back"
         echo ""; menu_footer
-        read -rp "🔹  Choice [0-2]: " choice
+        read -rp "🔹  Choice [0-3]: " choice
         case "$choice" in
             1) list_table 'SELECT id, username, expansion, locked FROM account ORDER BY id;'; wait_for_user ;;
-            2) read -rp "Account ID to delete: " id
+            2) read -rp "New account name: " u
+               read -rsp "Password: " p; echo
+               if [[ "$u" =~ ^[A-Za-z0-9_-]{1,16}$ && -n "$p" ]]; then
+                   sess="${WORLD_SESSION:-world-session}"
+                   if tmx has-session -t "$sess" 2>/dev/null; then
+                       tmx send-keys -t "$sess" "account create $u $p" Enter
+                       echo "Sent 'account create $u' to the worldserver console."
+                   else
+                       echo "Worldserver not running - start it first (accounts are created via its console)."
+                   fi
+               else
+                   echo "Invalid input (name: 1-16 chars A-Z a-z 0-9 _ -, password required)."
+               fi
+               wait_for_user ;;
+            3) read -rp "Account ID to delete: " id
                if [[ "$id" =~ ^[0-9]+$ ]]; then
                    read -rp "Type DELETE to confirm: " confirm
                    [ "$confirm" = DELETE ] && mysql_auth -e "DELETE FROM account WHERE id=$id; DELETE FROM account_access WHERE id=$id;" && echo "Account deleted."
@@ -90,7 +105,11 @@ realm_menu() {
         echo ""; menu_footer
         read -rp "🔹  Choice [0-2]: " choice
         case "$choice" in
-            1) list_table 'SELECT id, name, address, port, flag, gamebuild FROM realmlist ORDER BY id;'; wait_for_user ;;
+            1) list_table "SELECT id, name, address,
+                    CASE icon WHEN 0 THEN 'Normal' WHEN 1 THEN 'PvP' WHEN 4 THEN 'Normal' WHEN 6 THEN 'RP' WHEN 8 THEN 'RP PvP' ELSE icon END AS icon,
+                    flag, timezone,
+                    CASE allowedSecurityLevel WHEN 0 THEN 'Player' WHEN 1 THEN 'Mod' WHEN 2 THEN 'GM' WHEN 3 THEN 'Admin' ELSE allowedSecurityLevel END AS security
+                 FROM realmlist ORDER BY id;"; wait_for_user ;;
             2) read -rp "Realm ID: " id; read -rp "New address: " address
                if [[ "$id" =~ ^[0-9]+$ && "$address" =~ ^[A-Za-z0-9._-]+$ ]]; then
                    mysql_auth -e "UPDATE realmlist SET address='$address', localAddress='$address' WHERE id=$id;" && echo "Realm updated."
@@ -134,7 +153,7 @@ config_menu() {
 
 build_menu() {
     while true; do
-        submenu_title "🛠️  BUILD TOOLS" "$COLOR_BUILD"
+        submenu_title "🛠  BUILD TOOLS" "$COLOR_BUILD"
         echo -e "  ${COLOR_BUILD}[1]${RESET}  Pull git updates"
         echo -e "  ${COLOR_BUILD}[2]${RESET}  Build and install"
         echo -e "  ${COLOR_BUILD}[3]${RESET}  Clean build directory"
@@ -174,8 +193,8 @@ render_menu() {
     hr
 
     menu_section "$COLOR_SERVER" "⚙️  SERVER CONTROL"
-    echo -e "  ${COLOR_SERVER}[1]${RESET}  🚀  Start server          ${COLOR_SERVER}[2]${RESET}  🛑  Stop server"
-    echo -e "  ${COLOR_SERVER}[3]${RESET}  💥  ${RED}Kill server (force)${RESET}   ${COLOR_SERVER}[4]${RESET}  🔄  Restart server"
+    echo -e "  ${COLOR_SERVER}[1]${RESET}  🚀  Start server          ${COLOR_SERVER}[2]${RESET}  🔄  Restart server"
+    echo -e "  ${COLOR_SERVER}[3]${RESET}  🛑  Stop server           ${COLOR_SERVER}[4]${RESET}  💥  ${RED}Kill server (force)${RESET}"
 
     menu_section "$COLOR_LOGS" "📄  CONSOLE"
     echo -e "  ${COLOR_LOGS}[5]${RESET}  🖥️  Auth console"
@@ -203,9 +222,9 @@ menu() {
         [ "$rc" -gt 128 ] && continue
         case "$choice" in
             1) run_step start_auth ;;
-            2) run_step stop_auth ;;
-            3) run_step kill_auth ;;
-            4) run_step restart_auth ;;
+            2) run_step restart_auth ;;
+            3) run_step stop_auth ;;
+            4) run_step kill_auth ;;
             5) clear; tmx attach -t "$AUTH_SESSION" 2>/dev/null || { echo "No active authserver tmux session."; wait_for_user; } ;;
             6) run_step autostart_auth ;;
             7) build_menu ;;

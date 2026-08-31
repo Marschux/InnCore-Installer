@@ -149,11 +149,15 @@ menu_section() {
 }
 
 box_title() {   # box_title <title> [color]
-    local t="$1" c="${2:-$CYAN}" w=74 pad rule
+    local t="$1" c="${2:-$CYAN}" w=74 pad rule tw
     rule="$(printf '═%.0s' $(seq 1 "$w"))"
-    pad=$(( (w - ${#t}) / 2 ))
+    # Display width: submenu titles start with one emoji that counts as a single
+    # code point but renders two columns wide - add 1 so the box stays aligned.
+    tw=${#t}
+    case "$t" in [!$'\x20'-$'\x7e']*) tw=$((tw + 1)) ;; esac
+    pad=$(( (w - tw) / 2 ))
     printf "${c}╔%s╗${RESET}\n" "$rule"
-    printf "${c}║${RESET}%*s${BOLD}${WHITE}%s${RESET}%*s${c}║${RESET}\n" "$pad" "" "$t" "$((w - pad - ${#t}))" ""
+    printf "${c}║${RESET}%*s${BOLD}${WHITE}%s${RESET}%*s${c}║${RESET}\n" "$pad" "" "$t" "$((w - pad - tw))" ""
     printf "${c}╚%s╝${RESET}\n" "$rule"
 }
 

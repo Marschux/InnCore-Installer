@@ -24,7 +24,7 @@ start_world()   { server_start worldserver "$WORLD_ENGINE" "$WORLD_BINARY" "$WOR
 stop_world()    { server_stop worldserver "$WORLD_SESSION" "server shutdown 30" 180; }
 kill_world() {
     echo -e "${RED}Force-kill discards every character save still queued.${RESET}"
-    echo "Use [2] Stop unless the server is genuinely stuck (e.g. hangs on"
+    echo "Use [3] Stop unless the server is genuinely stuck (e.g. hangs on"
     echo "\"Waiting for N characters loading into database\" on a first start)."
     read -rp "Type KILL to confirm: " c
     [ "$c" = KILL ] && server_kill worldserver "$WORLD_SESSION" || echo "Cancelled."
@@ -130,7 +130,7 @@ apply_playerbots_values() {
 
 build_menu() {
     while true; do
-        submenu_title "🛠️  BUILD TOOLS" "$COLOR_BUILD"
+        submenu_title "🛠  BUILD TOOLS" "$COLOR_BUILD"
         echo -e "  ${COLOR_BUILD}[1]${RESET}  Pull git updates (core + Playerbots)"
         echo -e "  ${COLOR_BUILD}[2]${RESET}  Build and install"
         echo -e "  ${COLOR_BUILD}[3]${RESET}  Clean build directory"
@@ -188,8 +188,8 @@ render_menu() {
     hr
 
     menu_section "$COLOR_SERVER" "⚙️  SERVER CONTROL"
-    echo -e "  ${COLOR_SERVER}[1]${RESET}  🚀  Start server          ${COLOR_SERVER}[2]${RESET}  🛑  Stop server"
-    echo -e "  ${COLOR_SERVER}[3]${RESET}  💥  ${RED}Kill server (force)${RESET}   ${COLOR_SERVER}[4]${RESET}  🔄  Restart server"
+    echo -e "  ${COLOR_SERVER}[1]${RESET}  🚀  Start server          ${COLOR_SERVER}[2]${RESET}  🔄  Restart server"
+    echo -e "  ${COLOR_SERVER}[3]${RESET}  🛑  Stop server           ${COLOR_SERVER}[4]${RESET}  💥  ${RED}Kill server (force)${RESET}"
     echo -e "  ${COLOR_SERVER}[5]${RESET}  🧿  Reload config"
 
     menu_section "$COLOR_LOGS" "📄  LOGS & CONSOLE"
@@ -218,9 +218,9 @@ menu() {
         [ "$rc" -gt 128 ] && continue
         case "$choice" in
             1) run_step start_world ;;
-            2) run_step stop_world ;;
-            3) run_step kill_world ;;
-            4) run_step restart_world ;;
+            2) run_step restart_world ;;
+            3) run_step stop_world ;;
+            4) run_step kill_world ;;
             5) run_step reload_world ;;
             6) run_step save_world ;;
             7) clear; tmx attach -t "$WORLD_SESSION" 2>/dev/null || { echo "No active worldserver tmux session."; wait_for_user; } ;;
