@@ -155,17 +155,15 @@ config_menu() {
         echo -e "  ${COLOR_CONFIG}[3]${RESET}  Edit values_playerbots.conf (summary)"
         echo -e "  ${COLOR_CONFIG}[4]${RESET}  Apply values_playerbots.conf -> playerbots.conf"
         echo -e "  ${COLOR_CONFIG}[5]${RESET}  Edit any .conf (worldserver + module plugins)"
-        echo -e "  ${COLOR_CONFIG}[6]${RESET}  Update Control scripts"
         echo -e "  ${COLOR_CONFIG}[0]${RESET}  Back"
         echo ""; menu_footer
-        read -rp "🔹  Choice [0-6]: " choice
+        read -rp "🔹  Choice [0-5]: " choice
         case "$choice" in
             1) "${EDITOR:-nano}" "$SCRIPT_DIR/values/values_world.conf" ;;
             2) run_step apply_world_values ;;
             3) "${EDITOR:-nano}" "$SCRIPT_DIR/values/values_playerbots.conf" ;;
             4) run_step apply_playerbots_values ;;
             5) run_step edit_any_conf ;;
-            6) run_step update_control ;;
             0) return ;;
             *) echo "Invalid option."; sleep 1 ;;
         esac
@@ -202,10 +200,10 @@ render_menu() {
     echo -e "  ${COLOR_TOOLS}[10]${RESET} 🛠️  Build tools           ${COLOR_TOOLS}[11]${RESET} 👤  Delete account"
 
     menu_section "$COLOR_CONFIG" "📝  CONFIG & MAINTENANCE"
-    echo -e "  ${COLOR_CONFIG}[12]${RESET} 📝  Config & Control scripts"
+    echo -e "  ${COLOR_CONFIG}[12]${RESET} 📝  Config & maintenance  ${COLOR_CONFIG}[13]${RESET} ⬇️  Update Control scripts"
 
     menu_section "$COLOR_EXIT" "⏻  POWER & EXIT"
-    echo -e "  ${COLOR_EXIT}[13]${RESET} 🔁  Reboot LXC             ${COLOR_EXIT}[0]${RESET}  🚪  Exit menu"
+    echo -e "  ${COLOR_EXIT}[14]${RESET} 🔁  Reboot LXC             ${COLOR_EXIT}[0]${RESET}  🚪  Exit menu"
     echo ""
     menu_footer
 }
@@ -215,7 +213,7 @@ menu() {
     while true; do
         draw_menu render_menu
         echo ""
-        read -t 60 -rp "🔹  Select an option (0-13): " choice; rc=$?
+        read -t 60 -rp "🔹  Select an option (0-14): " choice; rc=$?
         [ "$rc" -gt 128 ] && continue
         case "$choice" in
             1) run_step start_world ;;
@@ -230,7 +228,8 @@ menu() {
             10) build_menu ;;
             11) run_step delete_account ;;
             12) config_menu ;;
-            13) run_step reboot_lxc worldserver "$WORLD_SESSION" "server shutdown 30" ;;
+            13) run_step update_control ;;
+            14) run_step reboot_lxc worldserver "$WORLD_SESSION" "server shutdown 30" ;;
             0) clear; echo -e "${GREEN}👋  Worldserver menu closed.${RESET}"; exit 0 ;;
             *) echo "Invalid option."; sleep 1 ;;
         esac
