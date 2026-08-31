@@ -194,6 +194,7 @@ render_menu() {
 }
 
 menu() {
+    MENU_RUNNING=1
     clear
     while true; do
         draw_menu render_menu
@@ -224,6 +225,7 @@ case "${1:-menu}" in
     stop) stop_auth ;;
     restart) restart_auth ;;
     status) server_status authserver "$AUTH_SESSION" ;;
+    update) update_control ;;
     menu) menu ;;
-    *) echo "Usage: $0 [menu|start|stop|restart|status]"; exit 1 ;;
+    *) echo "Usage: $0 [menu|start|stop|restart|status|update]"; exit 1 ;;
 esac

@@ -47,6 +47,10 @@ cd /opt/wowserver-install/Azerothcore && ./acore-install.sh
 After a build you get `authmenu` and/or `worldmenu`. Start them as root or with
 `sudo` — they switch to the server user themselves.
 
+`authmenu` / `worldmenu` also take a subcommand: `start`, `stop`, `restart`,
+`status`, and `update` (pull + reinstall the Control scripts from the repo
+checkout). No argument opens the menu.
+
 ```text
 Control/
 ├── common.sh        shared code (status, start/stop, apply_values)
