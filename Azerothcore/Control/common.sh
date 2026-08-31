@@ -118,6 +118,9 @@ update_control_scripts() {   # update_control_scripts <menu-basename>
         install -m 0755 "$src/$f" "$SCRIPT_DIR/$f"
     done
     echo "Control scripts updated from $src"
+    echo ""
+    read -rp "Restart the menu now to load the new version? [Y/n]: " a
+    case "$a" in n|N|no|NO) return 0 ;; *) exec "$SCRIPT_DIR/$1" ;; esac
 }
 
 current_branch() {
