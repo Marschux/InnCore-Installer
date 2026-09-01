@@ -89,6 +89,8 @@ restart_sched_reload() {
 restart_sched_enable() {
     [ -s "$RESTART_TIMES_CONF" ] || { echo "Add at least one restart time first."; return 1; }
     [ -x "$RESTART_RUNNER" ] || chmod +x "$RESTART_RUNNER" 2>/dev/null
+    # Retire the old OnCalendar timer so it can't fire alongside the new service.
+    sudo systemctl disable --now azerothcore-world-restart.timer 2>/dev/null || true
     sudo tee "/etc/systemd/system/$WORLD_TIMER_NAME" >/dev/null <<EOF
 [Unit]
 Description=AzerothCore worldserver daily restart scheduler
