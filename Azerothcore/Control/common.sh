@@ -599,9 +599,23 @@ build_hint() {   # build_hint <repo-dir>
     fi
 }
 
-safe_build() {   # safe_build <build-dir> [repo-dir]
-    local dir="$1" repo="${2:-}"
-    require_path "$dir" || return 1
+safe_build() {   # safe_build <build-dir> <repo-dir> <apps-build> <scripts>
+    local dir="$1" repo="${2:-}" apps="${3:-all}" scripts="${4:-static}"
+    require_path "$repo" || return 1
+    run_as_owner mkdir -p "$dir" || return 1
+    # No configured build tree (fresh box or after 'Clean build directory') -
+    # run CMake first, same flags the installer used.
+    if [ ! -f "$dir/CMakeCache.txt" ]; then
+        echo "No build tree yet - running CMake configure ($apps, scripts=$scripts)..."
+        run_as_owner bash -c "cd '$dir' && cmake '$repo' \
+            -DCMAKE_INSTALL_PREFIX='$repo/env/dist' \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DAPPS_BUILD='$apps' \
+            -DTOOLS_BUILD=none \
+            -DSCRIPTS='$scripts' \
+            -DMODULES=static" \
+            || { echo "CMake configure failed."; return 1; }
+    fi
     run_as_owner bash -c "cd '$dir' && make -j \"\$(nproc)\" && make install" || return 1
     if [ -n "$repo" ]; then gitq "$repo" rev-parse HEAD 2>/dev/null > "$(build_state_file "$repo")" || true; fi
     return 0

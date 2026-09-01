@@ -198,7 +198,7 @@ build_menu() {
         read -rp "🔹  Choice [0-3]: " choice
         case "$choice" in
             1) run_step pull_updates ;;
-            2) run_step safe_build "$ACORE_DIR/build" "$ACORE_DIR" ;;
+            2) run_step safe_build "$ACORE_DIR/build" "$ACORE_DIR" world-only static ;;
             3) run_step "$SCRIPT_DIR/clean-build.sh" "$ACORE_DIR" ;;
             0) return ;;
             *) echo "Invalid option."; sleep 1 ;;
