@@ -113,9 +113,16 @@ update_control_scripts() {   # update_control_scripts <menu-basename>
         local branch remote
         branch="$(gitq "$src" rev-parse --abbrev-ref HEAD 2>/dev/null)"
         remote="$(gitq "$src" remote get-url origin 2>/dev/null)"
-        echo "Pulling $branch from ${remote:-origin} ..."
-        gitq "$src" pull --ff-only origin "$branch" \
-            || echo "!! git pull failed - installing the files as they are on disk."
+        echo "Fetching $branch from ${remote:-origin} ..."
+        # This checkout is only a distribution point - force it to match the
+        # remote so line-ending churn or a stray edit can't block the update.
+        if gitq "$src" fetch --prune origin "$branch"; then
+            gitq "$src" reset --hard "origin/$branch" \
+                && gitq "$src" clean -fd \
+                || echo "!! reset failed - installing the files as they are on disk."
+        else
+            echo "!! git fetch failed - installing the files as they are on disk."
+        fi
     else
         echo "!! $src is not a git checkout - installing whatever files are there."
     fi
