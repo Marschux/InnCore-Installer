@@ -394,7 +394,7 @@ realm_header() {
              FROM realmlist ORDER BY id;" 2>/dev/null)"
     [ -n "$rows" ] || return 0
     echo -e "$(status_row 🌐 "Realms:")"
-    printf "  ${DIM}%-3s %-14.14s %-6s %-17.17s %-11s %-8s %s${RESET}\n" \
+    printf "  ${DIM}%-3s %-14.14s %-9s %-17.17s %-11s %-8s %s${RESET}\n" \
         ID Name Type Address Flag TZ Sec
     # Pad every field to width first, then wrap in colour and emit with echo -e -
     # printf does not expand \033 inside %s arguments, so a coloured %s prints the
@@ -407,7 +407,7 @@ realm_header() {
         printf -v idc   '%-3s'     "$id"
         printf -v namec '%-14.14s' "$name"
         printf -v addrc '%-17.17s' "${address}:${port}"
-        printf -v iconc '%-6s'     "$icon"
+        printf -v iconc '%-9s'     "$icon"
         printf -v flagc '%-11s'    "$flag"
         printf -v tzc   '%-8s'     "$tz"
         printf -v secc  '%s'       "$sec"
