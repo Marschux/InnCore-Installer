@@ -419,18 +419,22 @@ realm_header() {
     echo -e "$(status_row 🌐 "Realms:")"
     printf "     ${DIM}%-3s %-20.20s %-7s %-22.22s %-12s %-13s %s${RESET}\n" \
         ID Name Type Address Flag Timezone Security
-    # Pad to width first, then wrap in colour - ANSI bytes must not count toward %-Ns.
-    local cell tc fc sc
+    # Pad every field to width first, then wrap in colour and emit with echo -e -
+    # printf does not expand \033 inside %s arguments, so a coloured %s prints the
+    # escape literally.
+    local tc fc sc idc namec addrc iconc flagc tzc secc
     while IFS=$'\t' read -r id name address port icon flag tz sec; do
         case "$icon" in PvP) tc=$RED ;; RP) tc=$BLUE ;; "RP PvP") tc=$PURPLE ;; *) tc=$GREEN ;; esac
         case "$flag" in Online) fc=$GREEN ;; Offline|Invalid) fc=$RED ;; Recommended) fc=$GOLD ;; New) fc=$CYAN ;; *) fc=$DIM ;; esac
         case "$sec" in Player) sc=$GREEN ;; Mod|GM) sc=$GOLD ;; Admin) sc=$RED ;; *) sc=$DIM ;; esac
-        printf -v cell '%-7s' "$icon";            icon="${tc}${cell}${RESET}"
-        printf -v cell '%-12s' "$flag";           flag="${fc}${cell}${RESET}"
-        printf -v cell '%-13s' "$tz";             tz="${TEAL}${cell}${RESET}"
-        printf -v cell '%s'    "$sec";            sec="${sc}${cell}${RESET}"
-        printf "     ${CYAN}%-3s${RESET} %-20.20s %s %-22.22s %s %s %s\n" \
-            "$id" "$name" "$icon" "${address}:${port}" "$flag" "$tz" "$sec"
+        printf -v idc   '%-3s'     "$id"
+        printf -v namec '%-20.20s' "$name"
+        printf -v addrc '%-22.22s' "${address}:${port}"
+        printf -v iconc '%-7s'     "$icon"
+        printf -v flagc '%-12s'    "$flag"
+        printf -v tzc   '%-13s'    "$tz"
+        printf -v secc  '%s'       "$sec"
+        echo -e "     ${CYAN}${idc}${RESET} ${namec} ${tc}${iconc}${RESET} ${addrc} ${fc}${flagc}${RESET} ${TEAL}${tzc}${RESET} ${sc}${secc}${RESET}"
     done <<< "$rows"
 }
 
