@@ -465,19 +465,22 @@ require_path() {
 
 server_start() {
     local process="$1" engine="$2" binary="$3" conf="$4" session="$5"
+    local name="${process^}"
+
+    echo -e "${CYAN}🚀  Starting ${process} via run-engine...${RESET}"
+
+    if pgrep -x "$process" >/dev/null 2>&1 || tmx has-session -t "$session" 2>/dev/null; then
+        echo -e "${YELLOW}⚠️  ${name} is already running: ${session}${RESET}"
+        return 0
+    fi
 
     require_path "$engine" || return 1
     require_path "$binary" || return 1
     require_path "$conf" || return 1
 
-    if pgrep -x "$process" >/dev/null 2>&1 || tmx has-session -t "$session" 2>/dev/null; then
-        echo "$process is already running or already owns the session $session."
-        return 0
-    fi
-
     tmx new-session -d -s "$session" \
         "cd '$ACORE_DIR' && '$engine' start '$binary' --server-config '$conf' --session-manager none"
-    echo "$process started: $session"
+    echo -e "${GREEN}✅  ${name} started.${RESET}"
 }
 
 # Server log for drain detection. AzerothCore writes it into the working dir the
@@ -506,10 +509,18 @@ proc_cpu_ticks() {   # proc_cpu_ticks <process>
 server_stop() {
     local process="$1" session="$2" shutdown_command="${3:-}" stall_limit="${4:-120}" send="${5:-1}"
     local waited=0 stalled=0 draining=0 log mark=0 last_cpu last_size cpu size
+    local name="${process^}"
+
+    echo -e "${CYAN}🛑  Stopping ${process}...${RESET}"
 
     if ! pgrep -x "$process" >/dev/null 2>&1; then
-        tmx kill-session -t "$session" 2>/dev/null || true
-        echo "$process is not running."
+        if tmx has-session -t "$session" 2>/dev/null; then
+            echo -e "${YELLOW}⚠️  tmux session exists, but no ${process} process is running.${RESET}"
+            echo -e "${CYAN}🧹  Closing empty tmux session...${RESET}"
+            tmx kill-session -t "$session" 2>/dev/null || true
+        else
+            echo -e "${YELLOW}⚠️  No running ${process} process found.${RESET}"
+        fi
         return 0
     fi
 
@@ -520,15 +531,18 @@ server_stop() {
     # sends an announce + timed `server shutdown`); just wait it out and verify.
     if [ "$send" = 1 ]; then
         if [ -n "$shutdown_command" ] && tmx has-session -t "$session" 2>/dev/null; then
+            echo -e "${CYAN}💾  Saving world...${RESET}"
             tmx send-keys -t "$session" "saveall" Enter
+            echo -e "${CYAN}🛑  Sending shutdown (${shutdown_command#server shutdown }s notice)...${RESET}"
             tmx send-keys -t "$session" "$shutdown_command" Enter
         else
+            echo -e "${CYAN}📨  Sending TERM to ${process} process...${RESET}"
             pkill -TERM -x "$process" 2>/dev/null || true
         fi
     fi
 
     last_cpu="$(proc_cpu_ticks "$process")"; last_size="$mark"
-    echo "Waiting for $process to stop..."
+    echo -e "${CYAN}⏳  Waiting for ${process} to stop...${RESET}"
 
     while pgrep -x "$process" >/dev/null 2>&1; do
         sleep 1; waited=$((waited + 1))
@@ -539,7 +553,7 @@ server_stop() {
         if [ "$draining" -eq 0 ] && [ -n "$log" ] \
            && tail -n +"$((mark + 1))" "$log" 2>/dev/null | grep -q "Closing down DatabasePool"; then
             draining=1
-            echo "Draining the database queue - this will not be interrupted."
+            echo -e "${CYAN}💾  Writing pending database queries - will not interrupt this.${RESET}"
         fi
 
         if [ "$cpu" != "$last_cpu" ] || [ "$size" != "$last_size" ]; then
@@ -547,18 +561,22 @@ server_stop() {
         elif [ "$draining" -eq 0 ]; then
             stalled=$((stalled + 1))
             if [ "$stalled" -ge "$stall_limit" ]; then
-                echo "$process: no activity for ${stall_limit}s and still running; no automatic KILL."
+                echo -e "${YELLOW}⚠️  No activity for ${stall_limit}s and the process is still running.${RESET}"
                 return 1
             fi
         fi
-        if [ $((waited % 30)) -eq 0 ]; then echo "  ...still shutting down (${waited}s)"; fi
+        if [ $((waited % 30)) -eq 0 ]; then echo "    ...still shutting down (${waited}s)"; fi
     done
 
-    tmx kill-session -t "$session" 2>/dev/null || true
+    if tmx has-session -t "$session" 2>/dev/null; then
+        echo -e "${CYAN}🧹  Closing tmux session: ${session}${RESET}"
+        tmx kill-session -t "$session" 2>/dev/null || true
+    fi
     if [ -n "$log" ] && ! tail -n +"$((mark + 1))" "$log" 2>/dev/null | grep -q "All connections on DatabasePool .* closed"; then
-        echo "$process stopped - but the log does not confirm the DB pool closed. Check $log."
+        echo -e "${YELLOW}⚠️  ${name} stopped, but the log does not show the database pools closing.${RESET}"
+        echo -e "${YELLOW}    Check $log before trusting the last save.${RESET}"
     else
-        echo "$process stopped gracefully."
+        echo -e "${GREEN}✅  ${name} stopped, database queue drained.${RESET}"
     fi
 }
 
@@ -571,44 +589,55 @@ wait_for_port_release() {   # wait_for_port_release <conf>
     [[ "$port" =~ ^[0-9]+$ ]] || { sleep 2; return 0; }
     for i in $(seq 1 20); do
         if ! (exec 3<>"/dev/tcp/127.0.0.1/$port") 2>/dev/null; then
-            if [ "$i" -gt 1 ]; then echo "Port $port released."; fi
+            if [ "$i" -gt 1 ]; then echo -e "${CYAN}⏳  Port $port released.${RESET}"; fi
             return 0
         fi
         exec 3>&- 2>/dev/null || true
         sleep 1
     done
-    echo "Port $port still in use after 20s - starting anyway."
+    echo -e "${YELLOW}⚠️  Port $port is still in use after 20s - starting anyway.${RESET}"
 }
 
 server_restart() {
     local process="$1" engine="$2" binary="$3" conf="$4" session="$5" shutdown_command="${6:-}"
+    local name="${process^}"
+    echo -e "${CYAN}🔄  Restarting ${process}...${RESET}"
     server_stop "$process" "$session" "$shutdown_command" "${7:-120}" || return 1
     wait_for_port_release "$conf"
     server_start "$process" "$engine" "$binary" "$conf" "$session"
+    echo -e "${GREEN}✅  ${name} restart completed.${RESET}"
 }
 
 server_kill() {
     local process="$1" session="$2"
-    echo "Force-stopping $process..."
+    local name="${process^}"
+    echo -e "${YELLOW}🧨  EMERGENCY STOP: Force-stopping ${process}...${RESET}"
     pkill -TERM -x "$process" 2>/dev/null
     for _ in $(seq 1 5); do pgrep -x "$process" >/dev/null 2>&1 || break; sleep 1; done
     if pgrep -x "$process" >/dev/null 2>&1; then
+        echo -e "${RED}🧨  ${name} is still stuck. Sending KILL...${RESET}"
         pkill -KILL -x "$process" 2>/dev/null
         sleep 1
     fi
-    tmx kill-session -t "$session" 2>/dev/null || true
-    pgrep -x "$process" >/dev/null 2>&1 && { echo "$process still alive - check manually."; return 1; }
-    echo "$process force-stopped."
+    if tmx has-session -t "$session" 2>/dev/null; then
+        echo -e "${CYAN}🧹  Killing tmux session: ${session}${RESET}"
+        tmx kill-session -t "$session" 2>/dev/null || true
+    fi
+    pgrep -x "$process" >/dev/null 2>&1 && { echo -e "${RED}⚠️  ${name} still alive - check manually.${RESET}"; return 1; }
+    echo -e "${GREEN}✅  Emergency stop completed.${RESET}"
 }
 
 server_reload() {
     local process="$1" session="$2"
+    local name="${process^}"
+    echo -e "${CYAN}♻️  Sending AzerothCore config reload...${RESET}"
     if ! pgrep -x "$process" >/dev/null 2>&1 || ! tmx has-session -t "$session" 2>/dev/null; then
-        echo "$process is not running with an active tmux session."
+        echo -e "${YELLOW}⚠️  ${name} is not running with an active tmux session.${RESET}"
         return 1
     fi
     tmx send-keys -t "$session" "reload config" Enter
-    echo "Config reload sent to $process."
+    echo -e "${GREEN}✅  reload config was sent.${RESET}"
+    echo -e "${DIM}💡  Note: some changes still require a real restart.${RESET}"
 }
 
 read_login_database() {
