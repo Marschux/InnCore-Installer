@@ -131,6 +131,8 @@ apply_playerbots_values() {
 build_menu() {
     while true; do
         submenu_title "🛠  BUILD TOOLS" "$COLOR_BUILD"
+        build_hint "$ACORE_DIR"
+        echo ""
         echo -e "  ${COLOR_BUILD}[1]${RESET}  Pull git updates (core + Playerbots)"
         echo -e "  ${COLOR_BUILD}[2]${RESET}  Build and install"
         echo -e "  ${COLOR_BUILD}[3]${RESET}  Clean build directory"
@@ -139,7 +141,7 @@ build_menu() {
         read -rp "🔹  Choice [0-3]: " choice
         case "$choice" in
             1) run_step pull_updates ;;
-            2) run_step safe_build "$ACORE_DIR/build" ;;
+            2) run_step safe_build "$ACORE_DIR/build" "$ACORE_DIR" ;;
             3) run_step "$SCRIPT_DIR/clean-build.sh" "$ACORE_DIR" ;;
             0) return ;;
             *) echo "Invalid option."; sleep 1 ;;

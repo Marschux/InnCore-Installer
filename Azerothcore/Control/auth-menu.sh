@@ -126,6 +126,46 @@ acc_gm() {
     fi
 }
 
+acc_rename() {
+    local q row id u new p p2 sv salt ver
+    read -rp "Account name or id: " q
+    row="$(acc_find "$q")"; [ -n "$row" ] || { echo "Account not found."; return 1; }
+    IFS=$'\t' read -r id u _ _ <<< "$row"
+    read -rp "New name for '$u': " new
+    [[ "$new" =~ ^[A-Za-z0-9_-]{1,16}$ ]] || { echo "Invalid name (1-16 chars A-Z a-z 0-9 _ -)."; return 1; }
+    new="${new^^}"
+    [ "$(mysql_auth -N -s -e "SELECT COUNT(*) FROM account WHERE username='$(sqesc "$new")' AND id<>$id;")" = 0 ] \
+        || { echo "Name '$new' already taken."; return 1; }
+    echo "SRP6 depends on the name, so a new password must be set now."
+    read -rsp "New password: " p; echo
+    read -rsp "Repeat password: " p2; echo
+    [ -n "$p" ] && [ "$p" = "$p2" ] || { echo "Passwords empty or do not match."; return 1; }
+    sv="$(srp6_hex "$new" "$p")" || return 1
+    salt="${sv%% *}"; ver="${sv##* }"
+    mysql_auth -e "UPDATE account SET username='$(sqesc "$new")',salt=UNHEX('$salt'),verifier=UNHEX('$ver'),session_key=NULL WHERE id=$id;" \
+        && echo "Renamed '$u' -> '$new' and reset the password."
+}
+
+acc_expansion() {
+    local q row id u exp new
+    read -rp "Account name or id: " q
+    row="$(acc_find "$q")"; [ -n "$row" ] || { echo "Account not found."; return 1; }
+    IFS=$'\t' read -r id u exp _ <<< "$row"
+    read -rp "New expansion for '$u' (0=Classic 1=TBC 2=WotLK) [$exp]: " new; new="${new:-$exp}"
+    [[ "$new" =~ ^[0-2]$ ]] || { echo "Invalid expansion."; return 1; }
+    mysql_auth -e "UPDATE account SET expansion=$new WHERE id=$id;" && echo "Expansion set to $new for '$u'."
+}
+
+acc_locked() {
+    local q row id u lk new
+    read -rp "Account name or id: " q
+    row="$(acc_find "$q")"; [ -n "$row" ] || { echo "Account not found."; return 1; }
+    IFS=$'\t' read -r id u _ lk <<< "$row"
+    new=$([ "${lk:-0}" = 1 ] && echo 0 || echo 1)
+    mysql_auth -e "UPDATE account SET locked=$new WHERE id=$id;" \
+        && echo "'$u' is now $([ "$new" = 1 ] && echo locked || echo unlocked)."
+}
+
 acc_delete() {
     local id confirm
     read -rp "Account ID to delete: " id
@@ -142,17 +182,23 @@ account_menu() {
         echo -e "  ${COLOR_MANAGE}[1]${RESET}  List accounts"
         echo -e "  ${COLOR_MANAGE}[2]${RESET}  Add account"
         echo -e "  ${COLOR_MANAGE}[3]${RESET}  Change password"
-        echo -e "  ${COLOR_MANAGE}[4]${RESET}  Set GM level"
-        echo -e "  ${COLOR_MANAGE}[5]${RESET}  Delete account"
+        echo -e "  ${COLOR_MANAGE}[4]${RESET}  Rename account (resets password)"
+        echo -e "  ${COLOR_MANAGE}[5]${RESET}  Change expansion"
+        echo -e "  ${COLOR_MANAGE}[6]${RESET}  Toggle locked"
+        echo -e "  ${COLOR_MANAGE}[7]${RESET}  Set GM level"
+        echo -e "  ${COLOR_MANAGE}[8]${RESET}  Delete account"
         echo -e "  ${COLOR_MANAGE}[0]${RESET}  Back"
         echo ""; menu_footer
-        read -rp "🔹  Choice [0-5]: " choice
+        read -rp "🔹  Choice [0-8]: " choice
         case "$choice" in
             1) list_table 'SELECT id, username, expansion, locked, last_login FROM account ORDER BY id;'; wait_for_user ;;
             2) run_step acc_add ;;
             3) run_step acc_passwd ;;
-            4) run_step acc_gm ;;
-            5) run_step acc_delete ;;
+            4) run_step acc_rename ;;
+            5) run_step acc_expansion ;;
+            6) run_step acc_locked ;;
+            7) run_step acc_gm ;;
+            8) run_step acc_delete ;;
             0) return ;;
             *) echo "Invalid option."; sleep 1 ;;
         esac
@@ -160,12 +206,78 @@ account_menu() {
 }
 
 realm_list_table() {
-    list_table "SELECT id, name, address, port,
-        CASE icon WHEN 1 THEN 'PvP' WHEN 6 THEN 'RP' WHEN 8 THEN 'RP PvP' ELSE 'Normal' END AS type,
-        flag, timezone AS tz,
-        CASE allowedSecurityLevel WHEN 1 THEN 'Mod' WHEN 2 THEN 'GM' WHEN 3 THEN 'Admin' ELSE 'Player' END AS security,
-        gamebuild AS build
-     FROM realmlist ORDER BY id;"
+    local rows id name addr port ic fl tz se gb st
+    rows="$(mysql_auth -N -s -e "SELECT id,name,address,port,
+        CASE icon WHEN 1 THEN 'PvP' WHEN 6 THEN 'RP' WHEN 8 THEN 'RP PvP' ELSE 'Normal' END,
+        flag,timezone,
+        CASE allowedSecurityLevel WHEN 1 THEN 'Mod' WHEN 2 THEN 'GM' WHEN 3 THEN 'Admin' ELSE 'Player' END,
+        gamebuild FROM realmlist ORDER BY id;")"
+    [ -n "$rows" ] || { echo "(no realms)"; return 0; }
+    printf "  ${DIM}%-3s %-18s %-24s %-7s %-5s %-4s %-8s %-7s %s${RESET}\n" \
+        ID Name Address Type Flag TZ Security Build Status
+    while IFS=$'\t' read -r id name addr port ic fl tz se gb; do
+        if timeout 1 bash -c "exec 3<>/dev/tcp/$addr/$port" 2>/dev/null; then
+            st="${GREEN}ONLINE${RESET}"
+        else
+            st="${RED}OFFLINE${RESET}"
+        fi
+        printf "  %-3s %-18.18s %-24.24s %-7s %-5s %-4s %-8s %-7s " \
+            "$id" "$name" "${addr}:${port}" "$ic" "$fl" "$tz" "$se" "$gb"
+        echo -e "$st"
+    done <<< "$rows"
+}
+
+motd_ensure() {
+    mysql_auth -N -s -e "SHOW TABLES LIKE 'motd';" 2>/dev/null | grep -q '^motd$' && return 0
+    mysql_auth -e "CREATE TABLE motd (realmid INT NOT NULL, text LONGTEXT NULL, PRIMARY KEY (realmid));"
+}
+
+motd_list() {
+    motd_ensure
+    list_table "SELECT m.realmid, IFNULL(r.name,'All realms') AS realm,
+                REPLACE(IFNULL(m.text,''),CHAR(10),' ') AS motd
+                FROM motd m LEFT JOIN realmlist r ON r.id=m.realmid ORDER BY m.realmid;"
+}
+
+motd_edit() {
+    local id tmp txt
+    motd_ensure; realm_list_table; echo ""
+    read -rp "Realm ID (-1 = all realms): " id
+    [[ "$id" =~ ^-?[0-9]+$ ]] || { echo "Invalid ID."; return 1; }
+    tmp="$(mktemp)"
+    mysql_auth -N -s -e "SELECT IFNULL(text,'') FROM motd WHERE realmid=$id LIMIT 1;" > "$tmp"
+    "${EDITOR:-nano}" "$tmp"
+    txt="$(sqesc "$(cat "$tmp")")"; rm -f "$tmp"
+    mysql_auth -e "INSERT INTO motd (realmid,text) VALUES ($id,'$txt')
+                   ON DUPLICATE KEY UPDATE text='$txt';" \
+        && echo "MOTD saved for realm $id (players must relog to see it)."
+}
+
+motd_delete() {
+    local id
+    motd_ensure; motd_list; echo ""
+    read -rp "Realm ID to clear the MOTD for: " id
+    [[ "$id" =~ ^-?[0-9]+$ ]] || { echo "Invalid ID."; return 1; }
+    mysql_auth -e "DELETE FROM motd WHERE realmid=$id;" && echo "MOTD removed for realm $id."
+}
+
+motd_menu() {
+    while true; do
+        submenu_title "📣  MOTD" "$COLOR_MANAGE"
+        echo -e "  ${COLOR_MANAGE}[1]${RESET}  Show MOTD entries"
+        echo -e "  ${COLOR_MANAGE}[2]${RESET}  Add / edit MOTD"
+        echo -e "  ${COLOR_MANAGE}[3]${RESET}  Delete MOTD"
+        echo -e "  ${COLOR_MANAGE}[0]${RESET}  Back"
+        echo ""; menu_footer
+        read -rp "🔹  Choice [0-3]: " choice
+        case "$choice" in
+            1) run_step motd_list ;;
+            2) run_step motd_edit ;;
+            3) run_step motd_delete ;;
+            0) return ;;
+            *) echo "Invalid option."; sleep 1 ;;
+        esac
+    done
 }
 
 realm_add() {
@@ -222,13 +334,15 @@ realm_menu() {
         echo -e "  ${COLOR_MANAGE}[1]${RESET}  List realms"
         echo -e "  ${COLOR_MANAGE}[2]${RESET}  Add / update realm"
         echo -e "  ${COLOR_MANAGE}[3]${RESET}  Delete realm"
+        echo -e "  ${COLOR_MANAGE}[4]${RESET}  MOTD"
         echo -e "  ${COLOR_MANAGE}[0]${RESET}  Back"
         echo ""; menu_footer
-        read -rp "🔹  Choice [0-3]: " choice
+        read -rp "🔹  Choice [0-4]: " choice
         case "$choice" in
             1) run_step realm_list_table ;;
             2) run_step realm_add ;;
             3) run_step realm_delete ;;
+            4) motd_menu ;;
             0) return ;;
             *) echo "Invalid option."; sleep 1 ;;
         esac
@@ -266,6 +380,8 @@ config_menu() {
 build_menu() {
     while true; do
         submenu_title "🛠  BUILD TOOLS" "$COLOR_BUILD"
+        build_hint "$ACORE_DIR"
+        echo ""
         echo -e "  ${COLOR_BUILD}[1]${RESET}  Pull git updates"
         echo -e "  ${COLOR_BUILD}[2]${RESET}  Build and install"
         echo -e "  ${COLOR_BUILD}[3]${RESET}  Clean build directory"
@@ -274,7 +390,7 @@ build_menu() {
         read -rp "🔹  Choice [0-3]: " choice
         case "$choice" in
             1) run_step git_update "$ACORE_DIR" ;;
-            2) run_step safe_build "$ACORE_DIR/build" ;;
+            2) run_step safe_build "$ACORE_DIR/build" "$ACORE_DIR" ;;
             3) run_step "$SCRIPT_DIR/clean-build.sh" "$ACORE_DIR" ;;
             0) return ;;
             *) echo "Invalid option."; sleep 1 ;;

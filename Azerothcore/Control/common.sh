@@ -283,15 +283,41 @@ server_start() {
     echo "$process started: $session"
 }
 
+# Server log for drain detection. AzerothCore writes it into the working dir the
+# process was started from ($ACORE_DIR), older layouts into the bin dir.
+server_log() {   # server_log <process>
+    local name d
+    case "$1" in authserver) name=Auth.log ;; worldserver) name=Server.log ;; *) return 1 ;; esac
+    for d in "$ACORE_DIR" "$ACORE_DIR/env/dist/bin" "$ACORE_DIR/env/dist/logs"; do
+        [ -f "$d/$name" ] && { printf '%s\n' "$d/$name"; return 0; }
+    done
+    return 1
+}
+
+# utime+stime in clock ticks - the log alone can't tell a hung process from one
+# that is quietly draining its database queue.
+proc_cpu_ticks() {   # proc_cpu_ticks <process>
+    local pid; pid="$(pgrep -x "$1" | head -n1)"
+    [ -n "$pid" ] || { echo 0; return 0; }
+    awk '{print $14 + $15}' "/proc/$pid/stat" 2>/dev/null || echo 0
+}
+
+# Graceful stop that watches progress instead of counting seconds: it waits as
+# long as the process burns CPU or the log grows, becomes unbounded once the DB
+# pool starts draining, and only asks (never auto-kills) after <stall_limit>
+# seconds of no progress at all.
 server_stop() {
-    local process="$1" session="$2" shutdown_command="${3:-}" max_wait="${4:-120}"
-    local waited=0
+    local process="$1" session="$2" shutdown_command="${3:-}" stall_limit="${4:-120}"
+    local waited=0 stalled=0 draining=0 log mark=0 last_cpu last_size cpu size
 
     if ! pgrep -x "$process" >/dev/null 2>&1; then
         tmx kill-session -t "$session" 2>/dev/null || true
         echo "$process is not running."
         return 0
     fi
+
+    log="$(server_log "$process" 2>/dev/null || true)"
+    if [ -n "$log" ]; then mark="$(wc -l < "$log" 2>/dev/null || echo 0)"; fi
 
     if [ -n "$shutdown_command" ] && tmx has-session -t "$session" 2>/dev/null; then
         tmx send-keys -t "$session" "saveall" Enter
@@ -300,21 +326,39 @@ server_stop() {
         pkill -TERM -x "$process" 2>/dev/null || true
     fi
 
-    while pgrep -x "$process" >/dev/null 2>&1 && [ "$waited" -lt "$max_wait" ]; do
-        sleep 1
-        waited=$((waited + 1))
-        if [ $((waited % 30)) -eq 0 ]; then
-            echo "$process is shutting down gracefully (${waited}s)..."
+    last_cpu="$(proc_cpu_ticks "$process")"; last_size="$mark"
+    echo "Waiting for $process to stop..."
+
+    while pgrep -x "$process" >/dev/null 2>&1; do
+        sleep 1; waited=$((waited + 1))
+        cpu="$(proc_cpu_ticks "$process")"
+        size="$last_size"
+        if [ -n "$log" ]; then size="$(wc -l < "$log" 2>/dev/null || echo "$last_size")"; fi
+
+        if [ "$draining" -eq 0 ] && [ -n "$log" ] \
+           && tail -n +"$((mark + 1))" "$log" 2>/dev/null | grep -q "Closing down DatabasePool"; then
+            draining=1
+            echo "Draining the database queue - this will not be interrupted."
         fi
+
+        if [ "$cpu" != "$last_cpu" ] || [ "$size" != "$last_size" ]; then
+            last_cpu="$cpu"; last_size="$size"; stalled=0
+        elif [ "$draining" -eq 0 ]; then
+            stalled=$((stalled + 1))
+            if [ "$stalled" -ge "$stall_limit" ]; then
+                echo "$process: no activity for ${stall_limit}s and still running; no automatic KILL."
+                return 1
+            fi
+        fi
+        if [ $((waited % 30)) -eq 0 ]; then echo "  ...still shutting down (${waited}s)"; fi
     done
 
-    if pgrep -x "$process" >/dev/null 2>&1; then
-        echo "$process still responding after ${max_wait}s; no automatic KILL."
-        return 1
-    fi
-
     tmx kill-session -t "$session" 2>/dev/null || true
-    echo "$process stopped gracefully."
+    if [ -n "$log" ] && ! tail -n +"$((mark + 1))" "$log" 2>/dev/null | grep -q "All connections on DatabasePool .* closed"; then
+        echo "$process stopped - but the log does not confirm the DB pool closed. Check $log."
+    else
+        echo "$process stopped gracefully."
+    fi
 }
 
 server_restart() {
@@ -384,10 +428,33 @@ server_status() {
     fi
 }
 
-safe_build() {
-    local dir="$1"
+# Records / reports the source commit that was last built, so the build menu can
+# say whether a rebuild is due. Keyed per repo basename, stored next to the menu.
+build_state_file() { echo "$SCRIPT_DIR/.built-commit.$(basename "$1")"; }
+
+build_hint() {   # build_hint <repo-dir>
+    local head built
+    head="$(gitq "$1" rev-parse --short HEAD 2>/dev/null || true)"
+    [ -n "$head" ] || return 0
+    built=""
+    if [ -f "$(build_state_file "$1")" ]; then
+        built="$(cut -c1-7 < "$(build_state_file "$1")" 2>/dev/null || true)"
+    fi
+    if [ -z "$built" ]; then
+        echo -e "  ${DIM}Source @ $head - no build recorded yet.${RESET}"
+    elif [ "$head" = "$built" ]; then
+        echo -e "  ${DIM}Source @ $head - matches last build.${RESET}"
+    else
+        echo -e "  ${YELLOW}Source @ $head - last build was $built, rebuild recommended.${RESET}"
+    fi
+}
+
+safe_build() {   # safe_build <build-dir> [repo-dir]
+    local dir="$1" repo="${2:-}"
     require_path "$dir" || return 1
-    run_as_owner bash -c "cd '$dir' && make -j \"\$(nproc)\" && make install"
+    run_as_owner bash -c "cd '$dir' && make -j \"\$(nproc)\" && make install" || return 1
+    if [ -n "$repo" ]; then gitq "$repo" rev-parse HEAD 2>/dev/null > "$(build_state_file "$repo")" || true; fi
+    return 0
 }
 
 # Apply a flat "key = value" summary into a real .conf: every key that already
