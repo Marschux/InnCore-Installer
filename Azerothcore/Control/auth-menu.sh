@@ -417,7 +417,7 @@ realm_header() {
              FROM realmlist ORDER BY id;" 2>/dev/null)"
     [ -n "$rows" ] || return 0
     echo -e "$(status_row 🌐 "Realms:")"
-    printf "     ${DIM}%-3s %-20.20s %-7s %-22.22s %-12s %-13s %s${RESET}\n" \
+    printf "     ${DIM}%-3s %-16.16s %-7s %-18.18s %-12s %-13s %s${RESET}\n" \
         ID Name Type Address Flag Timezone Security
     # Pad every field to width first, then wrap in colour and emit with echo -e -
     # printf does not expand \033 inside %s arguments, so a coloured %s prints the
@@ -428,8 +428,8 @@ realm_header() {
         case "$flag" in Online) fc=$GREEN ;; Offline|Invalid) fc=$RED ;; Recommended) fc=$GOLD ;; New) fc=$CYAN ;; *) fc=$DIM ;; esac
         case "$sec" in Player) sc=$GREEN ;; Mod|GM) sc=$GOLD ;; Admin) sc=$RED ;; *) sc=$DIM ;; esac
         printf -v idc   '%-3s'     "$id"
-        printf -v namec '%-20.20s' "$name"
-        printf -v addrc '%-22.22s' "${address}:${port}"
+        printf -v namec '%-16.16s' "$name"
+        printf -v addrc '%-18.18s' "${address}:${port}"
         printf -v iconc '%-7s'     "$icon"
         printf -v flagc '%-12s'    "$flag"
         printf -v tzc   '%-13s'    "$tz"
