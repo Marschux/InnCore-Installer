@@ -205,13 +205,14 @@ update_control_scripts() {   # update_control_scripts <menu-basename>
         echo "!! $src is not a git checkout - installing whatever files are there."
     fi
     # $SCRIPT_DIR is owned by the server user (this menu runs as them), no sudo.
-    local files=(common.sh clean-build.sh "$1")
-    if [ "$1" = world-menu.sh ]; then files+=(world-restart-runner.sh); fi
-    if [ "$1" = auth-menu.sh ]; then files+=(account-manager.sh realm-manager.sh db-autoincrement.sh); fi
-    for f in "${files[@]}"; do
-        [ -f "$src/$f" ] && install -m 0755 "$src/$f" "$SCRIPT_DIR/$f"
+    # Copy every .sh the repo Control dir carries so new helper scripts arrive
+    # without a code change here (the other role's menu file is harmless clutter).
+    local f n=0
+    for f in "$src"/*.sh; do
+        [ -f "$f" ] || continue
+        if install -m 0755 "$f" "$SCRIPT_DIR/$(basename "$f")"; then n=$((n + 1)); fi
     done
-    echo "Control scripts updated from $src"
+    echo "Control scripts updated from $src ($n files)"
     # Called from inside the menu: the running process still holds the old code,
     # so offer to re-exec. Called as `authmenu update` from a shell: just return.
     [ "${MENU_RUNNING:-0}" = 1 ] || return 0
