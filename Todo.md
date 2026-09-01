@@ -2,10 +2,20 @@
 #                         Offen                            #
 # -------------------------------------------------------- #
 
-## Review 2026-09-02 - Live-Lauf auf KI-Testbench-1 (Menue 1 -> 4)
+## Review 2026-09-02 - Live-Lauf auf KI-Testbench-1 (Menue 1 -> 4 -> 5, +Menues)
 
 Status je Punkt: [BESTAETIGT] = im echten Lauf reproduziert, [WIDERLEGT] = im
 Lauf ok, [OFFEN] = noch nicht erreicht.
+
+Kurzfassung:
+- Menue 1 (Basic System): sauber durch.
+- Menue 4 (Bothserver): Auth+World gebaut, MySQL 8.4 installiert+getunt,
+  Client-Data geladen, Control fuer beide Rollen installiert. EIN Blocker:
+  mysql-apt-config-Dialog (s.u.) - musste von Hand geklickt werden.
+- Auth- und World-Menue: Start/Stop/Restart/Kill alle ok, neue Ausgabe passt.
+- 2 HOCH-Bugs bestaetigt: Autostart (sudoers-Probe) + reexec_as_owner-Guard.
+- 3 Findings widerlegt (mysqld.cnf-Header, root-auth, AllowTwoSide-Duplikat,
+  Server.log-Appender-Level).
 
 ### NEU [BESTAETIGT] mysql-apt-config whiptail-Dialog blockiert unattended-Install
 - Beim echten Lauf kam der interaktive "Configuring mysql-apt-config"-Dialog
@@ -66,9 +76,10 @@ Lauf ok, [OFFEN] = noch nicht erreicht.
   AUTH_DIR/WORLD_DIR/modules schlaegt fehl, set -e bricht ab. Re-Run nicht
   moeglich ohne manuelles Aufraeumen.
 
-- [NIEDRIG] run_worldserver haengt `AllowTwoSide.WhoList = 1` per `>>` an
-  worldserver.conf an, obwohl `.dist` den Key schon (=0) enthaelt -> doppelte
-  Zeile. Besser sed-ersetzen.
+- [WIDERLEGT] run_worldserver haengt `AllowTwoSide.WhoList = 1` per `>>` an.
+  `.dist` enthaelt den Key NICHT (auch nicht auskommentiert) -> genau eine
+  Zeile, kein Duplikat. Landet zwar nach dem schliessenden ###-Banner (haesslich
+  aber gueltig). Kein Bug.
 
 - [NIEDRIG] Bothserver: offer_menu_launch wird 2x aufgerufen (auth, world). Der
   erste `exec sudo authmenu` ersetzt den Prozess -> world-Menue-Frage kommt nie.
@@ -163,25 +174,35 @@ Lauf ok, [OFFEN] = noch nicht erreicht.
 - reboot: repo `sudo systemctl reboot` (sudoers-konform), InnControl `sudo /sbin/reboot`.
   repo in sich konsistent, OK.
 
-### NEU [zu pruefen] Server.log / Auth.log Appender-Level vs server_stop-Logik
-- common.sh server_stop/server_restart greppen Server.log/Auth.log nach
-  "Closing down DatabasePool" (Drain-Erkennung) und
-  "All connections on DatabasePool .* closed" (Clean-Shutdown-Verify).
-- Dist-Default: `Appender.Server=2,5,0,Server.log,w` bzw.
-  `Appender.Auth=2,5,0,Auth.log,w` - File-Appender Level 5. Auf der Bench
-  standen die Zeilen im Auth.log drin (also Level passt), ABER: mode `w` =
-  Truncate bei jedem Start. Bei server_restart wird vor server_start geprueft,
-  daher ok. Trotzdem gegenchecken dass die Playerbots-/World-Variante mit
-  `Appender.Server=2,5,1` (repo values_world) die Zeilen auch schreibt.
-- Worldserver-Test lief noch (DB-Import), Ergebnis nachtragen.
+- [WIDERLEGT] Server.log/Auth.log Appender-Level: server_stop greppt nach
+  "Closing down DatabasePool" + "All connections on DatabasePool .* closed".
+  Dist `Appender.Server=2,5,0` / `Appender.Auth=2,5,0` schreiben diese Zeilen
+  trotzdem (Live-Test: World-Restart -> "💾 Writing pending database queries"
+  + "✅ Worldserver stopped, database queue drained." korrekt erkannt).
+
+- [BESTAETIGT auf Bench, OK] World-Menue Start/Stop/Restart/Kill (als
+  `sudo worldmenu`): alle 4 ok, neue InnControl-Ausgabe korrekt inkl.
+  "🛑 Sending shutdown (30s notice)" (Extraktion aus shutdown_command klappt),
+  "...still shutting down (30s)", Drain-Erkennung, Clean-Shutdown-Verify.
+  Kill: "🧨 EMERGENCY STOP..." / "✅ Emergency stop completed."
+
+- [NICHT REPRODUZIERT] README-Hinweis "First-Start-Hang bei 'Waiting for N
+  characters loading into database'": im Test 500/500 Bots sauber eingeloggt,
+  Server kam hoch, kein Hang. Ggf. version-/timingabhaengig oder gefixt -
+  README-Passus evtl. entschaerfen.
+
+- [Doku] README World-Abschnitt sagt "three *DatabaseInfo lines" - es sind 4
+  (playerbots.conf hat PlayerbotsDatabaseInfo separat). values_playerbots.conf
+  deckt es ab, aber die README-Zahl stimmt nicht.
 
 ### Noch offen / manuell
 
-- Worldserver-Menue: Start (First-Start-Hang laut README) -> Kill -> Start ->
-  Stop/Restart durchtesten. DB-Import lief zuletzt.
-- Menue 6 (MySQL only) einzeln testen (siehe HOCH-Finding).
-- Menue 5 (Control standalone) - im Bothserver-Lauf schon inline mit-installiert,
-  separater Aufruf noch offen.
+- Menue 6 (MySQL only) auf FRISCHER Bench testen (MySQL war hier schon da) -
+  siehe HOCH-Finding zu `apt install mysql-server`.
+- Menue 5 (Control standalone) separat - im Bothserver-Lauf schon inline
+  mit-installiert und getestet, expliziter Aufruf offen.
+- Config-Menue: values_*.conf editieren + "Apply" -> .conf durchtesten
+  (apply_values / merge_values).
 
 
 # -------------------------------------------------------- #
