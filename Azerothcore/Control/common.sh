@@ -86,14 +86,34 @@ apply_two_side_rbac() {
     echo "Restart the worldserver (or '.reload rbac' in its console) to load it."
 }
 
-# Graceful server stop, then reboot the whole LXC.
+# Graceful server stop, then reboot the whole LXC. The reboot is detached with
+# setsid: `systemctl reboot` tears down sshd while this shell is still attached,
+# so a foreground call makes the menu look like it crashed instead of printing
+# the message below.
 reboot_lxc() {   # reboot_lxc <process> <session> [shutdown-command]
     echo "This stops ${1} and reboots the entire LXC."
     read -rp "Type REBOOT to confirm: " c
     [ "$c" = REBOOT ] || { echo "Cancelled."; return 0; }
     server_stop "$1" "$2" "${3:-}" 180 || echo "(stop did not finish cleanly - rebooting anyway)"
-    echo "Rebooting now..."
-    sudo systemctl reboot
+    echo "Rebooting in 3 seconds..."
+    setsid bash -c 'sleep 3; sudo systemctl reboot' >/dev/null 2>&1 </dev/null &
+    disown 2>/dev/null || true
+}
+
+# SRP6 salt + verifier for an AzerothCore account, printed as "SALT VERIFIER"
+# (uppercase hex). Lets the menu create/repair accounts straight in the auth DB
+# without a running worldserver console.
+srp6_hex() {   # srp6_hex <user> <pass>
+    command -v python3 >/dev/null 2>&1 || { echo "python3 is required for account passwords." >&2; return 1; }
+    python3 - "$1" "$2" <<'PY'
+import os, hashlib, sys
+u, p = sys.argv[1].upper(), sys.argv[2].upper()
+N = int("894B645E89E1535BBDAD5B8B290650530801B18EBFBF5E8FAB3C82872A3E9BB7", 16)
+salt = os.urandom(32)
+h2 = hashlib.sha1(salt + hashlib.sha1(f"{u}:{p}".encode()).digest()).digest()
+v = pow(7, int.from_bytes(h2, "little"), N)
+print(salt.hex().upper(), v.to_bytes(32, "little").hex().upper())
+PY
 }
 
 # Refresh the installed Control scripts from the repo checkout (CONTROL_SOURCE_DIR).

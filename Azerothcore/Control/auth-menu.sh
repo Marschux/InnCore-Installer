@@ -57,66 +57,178 @@ EOF
     esac
 }
 
+# SQL-quote a value for use inside single quotes.
+sqesc() { printf '%s' "$1" | sed "s/'/''/g"; }
+
+# Print "id<TAB>username<TAB>expansion<TAB>locked" for a name or numeric id, or nothing.
+acc_find() {
+    local q="$1"
+    if [[ "$q" =~ ^[0-9]+$ ]]; then
+        mysql_auth -N -s -e "SELECT id,username,expansion,locked FROM account WHERE id=$q LIMIT 1;"
+    else
+        mysql_auth -N -s -e "SELECT id,username,expansion,locked FROM account WHERE username='$(sqesc "${q^^}")' LIMIT 1;"
+    fi
+}
+
+acc_add() {
+    local next u p p2 exp sv salt ver
+    next="$(mysql_auth -N -s -e 'SELECT IFNULL(MAX(id),0)+1 FROM account WHERE id<10000;')"
+    read -rp "Account name: " u
+    [[ "$u" =~ ^[A-Za-z0-9_-]{1,16}$ ]] || { echo "Invalid name (1-16 chars A-Z a-z 0-9 _ -)."; return 1; }
+    u="${u^^}"
+    [ "$(mysql_auth -N -s -e "SELECT COUNT(*) FROM account WHERE username='$(sqesc "$u")';")" = 0 ] \
+        || { echo "Account '$u' already exists."; return 1; }
+    read -rsp "Password: " p; echo
+    read -rsp "Repeat password: " p2; echo
+    [ -n "$p" ] && [ "$p" = "$p2" ] || { echo "Passwords empty or do not match."; return 1; }
+    read -rp "Expansion (0=Classic 1=TBC 2=WotLK) [2]: " exp; exp="${exp:-2}"
+    [[ "$exp" =~ ^[0-2]$ ]] || { echo "Invalid expansion."; return 1; }
+    sv="$(srp6_hex "$u" "$p")" || return 1
+    salt="${sv%% *}"; ver="${sv##* }"
+    mysql_auth -e "INSERT INTO account (id,username,salt,verifier,expansion)
+                   VALUES ($next,'$(sqesc "$u")',UNHEX('$salt'),UNHEX('$ver'),$exp);" \
+        && echo "Account '$u' created (id $next, expansion $exp)."
+}
+
+acc_passwd() {
+    local q row id u sv salt ver p p2
+    read -rp "Account name or id: " q
+    row="$(acc_find "$q")"; [ -n "$row" ] || { echo "Account not found."; return 1; }
+    IFS=$'\t' read -r id u _ _ <<< "$row"
+    read -rsp "New password for '$u': " p; echo
+    read -rsp "Repeat password: " p2; echo
+    [ -n "$p" ] && [ "$p" = "$p2" ] || { echo "Passwords empty or do not match."; return 1; }
+    sv="$(srp6_hex "$u" "$p")" || return 1
+    salt="${sv%% *}"; ver="${sv##* }"
+    mysql_auth -e "UPDATE account SET salt=UNHEX('$salt'),verifier=UNHEX('$ver'),session_key=NULL WHERE id=$id;" \
+        && echo "Password changed for '$u'."
+}
+
+acc_gm() {
+    local q row id u lvl realm
+    read -rp "Account name or id: " q
+    row="$(acc_find "$q")"; [ -n "$row" ] || { echo "Account not found."; return 1; }
+    IFS=$'\t' read -r id u _ _ <<< "$row"
+    echo "Current access:"
+    list_table "SELECT aa.RealmID, IFNULL(r.name, IF(aa.RealmID=-1,'All realms','?')) AS realm, aa.gmlevel
+                FROM account_access aa LEFT JOIN realmlist r ON r.id=aa.RealmID WHERE aa.id=$id ORDER BY aa.RealmID;"
+    read -rp "New GM level (0=Player 1=Mod 2=GM 3=Admin): " lvl
+    [[ "$lvl" =~ ^[0-3]$ ]] || { echo "Invalid level."; return 1; }
+    read -rp "Realm ID (-1 = all realms) [-1]: " realm; realm="${realm:--1}"
+    [[ "$realm" =~ ^-?[0-9]+$ ]] || { echo "Invalid realm id."; return 1; }
+    if [ "$lvl" = 0 ]; then
+        mysql_auth -e "DELETE FROM account_access WHERE id=$id AND RealmID=$realm;" \
+            && echo "GM access removed for '$u' on realm $realm."
+    else
+        mysql_auth -e "DELETE FROM account_access WHERE id=$id AND RealmID=$realm;
+                       INSERT INTO account_access (id,gmlevel,RealmID) VALUES ($id,$lvl,$realm);" \
+            && echo "GM level $lvl set for '$u' on realm $realm."
+    fi
+}
+
+acc_delete() {
+    local id confirm
+    read -rp "Account ID to delete: " id
+    [[ "$id" =~ ^[0-9]+$ ]] || { echo "Invalid ID."; return 1; }
+    read -rp "Type DELETE to confirm: " confirm
+    [ "$confirm" = DELETE ] || { echo "Cancelled."; return 0; }
+    mysql_auth -e "DELETE FROM account WHERE id=$id; DELETE FROM account_access WHERE id=$id;" \
+        && echo "Account $id deleted."
+}
+
 account_menu() {
     while true; do
         submenu_title "👤  ACCOUNT MANAGEMENT" "$COLOR_MANAGE"
         echo -e "  ${COLOR_MANAGE}[1]${RESET}  List accounts"
-        echo -e "  ${COLOR_MANAGE}[2]${RESET}  Create account"
-        echo -e "  ${COLOR_MANAGE}[3]${RESET}  Delete account"
+        echo -e "  ${COLOR_MANAGE}[2]${RESET}  Add account"
+        echo -e "  ${COLOR_MANAGE}[3]${RESET}  Change password"
+        echo -e "  ${COLOR_MANAGE}[4]${RESET}  Set GM level"
+        echo -e "  ${COLOR_MANAGE}[5]${RESET}  Delete account"
         echo -e "  ${COLOR_MANAGE}[0]${RESET}  Back"
         echo ""; menu_footer
-        read -rp "🔹  Choice [0-3]: " choice
+        read -rp "🔹  Choice [0-5]: " choice
         case "$choice" in
-            1) list_table 'SELECT id, username, expansion, locked FROM account ORDER BY id;'; wait_for_user ;;
-            2) read -rp "New account name: " u
-               read -rsp "Password: " p; echo
-               if [[ "$u" =~ ^[A-Za-z0-9_-]{1,16}$ && -n "$p" ]]; then
-                   sess="${WORLD_SESSION:-world-session}"
-                   if tmx has-session -t "$sess" 2>/dev/null; then
-                       tmx send-keys -t "$sess" "account create $u $p" Enter
-                       echo "Sent 'account create $u' to the worldserver console."
-                   else
-                       echo "Worldserver not running - start it first (accounts are created via its console)."
-                   fi
-               else
-                   echo "Invalid input (name: 1-16 chars A-Z a-z 0-9 _ -, password required)."
-               fi
-               wait_for_user ;;
-            3) read -rp "Account ID to delete: " id
-               if [[ "$id" =~ ^[0-9]+$ ]]; then
-                   read -rp "Type DELETE to confirm: " confirm
-                   [ "$confirm" = DELETE ] && mysql_auth -e "DELETE FROM account WHERE id=$id; DELETE FROM account_access WHERE id=$id;" && echo "Account deleted."
-               else
-                   echo "Invalid ID."
-               fi
-               wait_for_user ;;
+            1) list_table 'SELECT id, username, expansion, locked, last_login FROM account ORDER BY id;'; wait_for_user ;;
+            2) run_step acc_add ;;
+            3) run_step acc_passwd ;;
+            4) run_step acc_gm ;;
+            5) run_step acc_delete ;;
             0) return ;;
             *) echo "Invalid option."; sleep 1 ;;
         esac
     done
 }
 
+realm_list_table() {
+    list_table "SELECT id, name, address, port,
+        CASE icon WHEN 1 THEN 'PvP' WHEN 6 THEN 'RP' WHEN 8 THEN 'RP PvP' ELSE 'Normal' END AS type,
+        flag, timezone AS tz,
+        CASE allowedSecurityLevel WHEN 1 THEN 'Mod' WHEN 2 THEN 'GM' WHEN 3 THEN 'Admin' ELSE 'Player' END AS security,
+        gamebuild AS build
+     FROM realmlist ORDER BY id;"
+}
+
+realm_add() {
+    local id row nm ad la sm pt ic fl tz se gb
+    realm_list_table; echo ""
+    id="$(mysql_auth -N -s -e 'SELECT IFNULL(MAX(id),0)+1 FROM realmlist;')"
+    read -rp "Realm ID [$id]: " id; id="${id:-$id}"
+    [[ "$id" =~ ^[0-9]+$ ]] || { echo "Invalid ID."; return 1; }
+    row="$(mysql_auth -N -s -e "SELECT name,address,localAddress,localSubnetMask,port,icon,flag,timezone,allowedSecurityLevel,gamebuild FROM realmlist WHERE id=$id LIMIT 1;")"
+    if [ -n "$row" ]; then
+        IFS=$'\t' read -r nm ad la sm pt ic fl tz se gb <<< "$row"
+        echo "Realm $id exists - values shown are the current ones (ENTER keeps them)."
+    else
+        nm="Realm $id"; ad="127.0.0.1"; la="127.0.0.1"; sm="255.255.255.0"
+        pt=8085; ic=0; fl=0; tz=1; se=0; gb=12340
+    fi
+    local v
+    read -rp "Name [$nm]: " v; nm="${v:-$nm}"
+    read -rp "Address (WAN IP/domain) [$ad]: " v; ad="${v:-$ad}"
+    read -rp "Local address (LAN) [$la]: " v; la="${v:-$la}"
+    read -rp "Local subnet mask [$sm]: " v; sm="${v:-$sm}"
+    read -rp "Port [$pt]: " v; pt="${v:-$pt}"
+    read -rp "Icon (0=Normal 1=PvP 6=RP 8=RP PvP) [$ic]: " v; ic="${v:-$ic}"
+    read -rp "Flag (0=None 2=Offline 32=Recommended 64=New) [$fl]: " v; fl="${v:-$fl}"
+    read -rp "Timezone (1=Dev 2=US 8=English 9=German 10=French) [$tz]: " v; tz="${v:-$tz}"
+    read -rp "Security level (0=Player 1=Mod 2=GM 3=Admin) [$se]: " v; se="${v:-$se}"
+    read -rp "Gamebuild (12340 = 3.3.5a) [$gb]: " v; gb="${v:-$gb}"
+    [[ "$pt$ic$fl$tz$se$gb" =~ ^[0-9]+$ ]] || { echo "Port/icon/flag/timezone/security/gamebuild must be numeric."; return 1; }
+    [[ "$ad" =~ ^[A-Za-z0-9._-]+$ && "$la" =~ ^[A-Za-z0-9._-]+$ ]] || { echo "Invalid address."; return 1; }
+    mysql_auth -e "INSERT INTO realmlist
+        (id,name,address,localAddress,localSubnetMask,port,icon,flag,timezone,allowedSecurityLevel,population,gamebuild)
+        VALUES ($id,'$(sqesc "$nm")','$(sqesc "$ad")','$(sqesc "$la")','$(sqesc "$sm")',$pt,$ic,$fl,$tz,$se,0,$gb)
+        ON DUPLICATE KEY UPDATE name='$(sqesc "$nm")',address='$(sqesc "$ad")',localAddress='$(sqesc "$la")',
+        localSubnetMask='$(sqesc "$sm")',port=$pt,icon=$ic,flag=$fl,timezone=$tz,allowedSecurityLevel=$se,gamebuild=$gb;" \
+        && echo "Realm $id '$nm' written. Worldserver needs RealmID = $id in worldserver.conf."
+}
+
+realm_delete() {
+    local id nm confirm
+    realm_list_table; echo ""
+    read -rp "Realm ID to delete: " id
+    [[ "$id" =~ ^[0-9]+$ ]] || { echo "Invalid ID."; return 1; }
+    nm="$(mysql_auth -N -s -e "SELECT name FROM realmlist WHERE id=$id LIMIT 1;")"
+    [ -n "$nm" ] || { echo "No realm with id $id."; return 1; }
+    read -rp "Type DELETE to remove realm [$id] $nm: " confirm
+    [ "$confirm" = DELETE ] || { echo "Cancelled."; return 0; }
+    mysql_auth -e "DELETE FROM realmlist WHERE id=$id;" \
+        && { mysql_auth -e "DELETE FROM motd WHERE realmid=$id;" 2>/dev/null; echo "Realm $id '$nm' deleted (character DB left untouched)."; }
+}
+
 realm_menu() {
     while true; do
         submenu_title "🌍  REALM MANAGEMENT" "$COLOR_MANAGE"
         echo -e "  ${COLOR_MANAGE}[1]${RESET}  List realms"
-        echo -e "  ${COLOR_MANAGE}[2]${RESET}  Change realm address"
+        echo -e "  ${COLOR_MANAGE}[2]${RESET}  Add / update realm"
+        echo -e "  ${COLOR_MANAGE}[3]${RESET}  Delete realm"
         echo -e "  ${COLOR_MANAGE}[0]${RESET}  Back"
         echo ""; menu_footer
-        read -rp "🔹  Choice [0-2]: " choice
+        read -rp "🔹  Choice [0-3]: " choice
         case "$choice" in
-            1) list_table "SELECT id, name, address,
-                    CASE icon WHEN 0 THEN 'Normal' WHEN 1 THEN 'PvP' WHEN 4 THEN 'Normal' WHEN 6 THEN 'RP' WHEN 8 THEN 'RP PvP' ELSE icon END AS icon,
-                    flag, timezone,
-                    CASE allowedSecurityLevel WHEN 0 THEN 'Player' WHEN 1 THEN 'Mod' WHEN 2 THEN 'GM' WHEN 3 THEN 'Admin' ELSE allowedSecurityLevel END AS security
-                 FROM realmlist ORDER BY id;"; wait_for_user ;;
-            2) read -rp "Realm ID: " id; read -rp "New address: " address
-               if [[ "$id" =~ ^[0-9]+$ && "$address" =~ ^[A-Za-z0-9._-]+$ ]]; then
-                   mysql_auth -e "UPDATE realmlist SET address='$address', localAddress='$address' WHERE id=$id;" && echo "Realm updated."
-               else
-                   echo "Invalid input."
-               fi
-               wait_for_user ;;
+            1) run_step realm_list_table ;;
+            2) run_step realm_add ;;
+            3) run_step realm_delete ;;
             0) return ;;
             *) echo "Invalid option."; sleep 1 ;;
         esac
