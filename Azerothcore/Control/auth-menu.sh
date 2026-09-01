@@ -109,12 +109,13 @@ realm_header() {
                               WHEN 9 THEN 'German' WHEN 10 THEN 'French' WHEN 11 THEN 'Spanish'
                               WHEN 12 THEN 'Russian' WHEN 14 THEN 'Taiwan' WHEN 16 THEN 'China'
                               WHEN 26 THEN 'Test' WHEN 33 THEN 'Transfer' ELSE CONCAT('tz', timezone) END,
-                CASE allowedSecurityLevel WHEN 1 THEN 'Mod' WHEN 2 THEN 'GM' WHEN 3 THEN 'Admin' ELSE 'Player' END
+                CASE allowedSecurityLevel WHEN 1 THEN 'Moderator' WHEN 2 THEN 'Gamemaster'
+                     WHEN 3 THEN 'Administrator' WHEN 4 THEN 'Console' ELSE 'Player' END
              FROM realmlist ORDER BY id;" 2>/dev/null)"
     [ -n "$rows" ] || return 0
     echo -e "$(status_row 🌐 "Realms:")"
-    printf "  ${DIM}%-3s %-12.12s %-9s %-16.16s %-11s %-7s %s${RESET}\n" \
-        ID Name Type Address Flag TZ Sec
+    printf "  ${DIM}%-3s %-12.12s %-9s %-19.19s %-12s %-9s %s${RESET}\n" \
+        ID Name Type Address Flag TZ Security
     # Pad every field to width first, then wrap in colour and emit with echo -e -
     # printf does not expand \033 inside %s arguments, so a coloured %s prints the
     # escape literally.
@@ -122,13 +123,13 @@ realm_header() {
     while IFS=$'\t' read -r id name address port icon flag tz sec; do
         case "$icon" in PvP) tc=$RED ;; RP) tc=$BLUE ;; "RP PvP") tc=$PURPLE ;; *) tc=$GREEN ;; esac
         case "$flag" in Online) fc=$GREEN ;; Offline|Invalid) fc=$RED ;; Recommended) fc=$GOLD ;; New) fc=$CYAN ;; *) fc=$DIM ;; esac
-        case "$sec" in Player) sc=$GREEN ;; Mod|GM) sc=$GOLD ;; Admin) sc=$RED ;; *) sc=$DIM ;; esac
+        case "$sec" in Player) sc=$GREEN ;; Moderator|Gamemaster) sc=$GOLD ;; Administrator|Console) sc=$RED ;; *) sc=$DIM ;; esac
         printf -v idc   '%-3s'     "$id"
         printf -v namec '%-12.12s' "$name"
-        printf -v addrc '%-16.16s' "${address}:${port}"
+        printf -v addrc '%-19.19s' "${address}:${port}"
         printf -v iconc '%-9s'     "$icon"
-        printf -v flagc '%-11s'    "$flag"
-        printf -v tzc   '%-7s'     "$tz"
+        printf -v flagc '%-12s'    "$flag"
+        printf -v tzc   '%-9s'     "$tz"
         printf -v secc  '%s'       "$sec"
         echo -e "  ${CYAN}${idc}${RESET} ${namec} ${tc}${iconc}${RESET} ${addrc} ${fc}${flagc}${RESET} ${TEAL}${tzc}${RESET} ${sc}${secc}${RESET}"
     done <<< "$rows"
@@ -144,21 +145,21 @@ render_menu() {
     hr
 
     menu_section "$COLOR_SERVER" "⚙️  SERVER CONTROL"
-    echo -e "  ${COLOR_SERVER}[1]${RESET}  🚀  Start server          ${COLOR_SERVER}[2]${RESET}  🔄  Restart server"
-    echo -e "  ${COLOR_SERVER}[3]${RESET}  🛑  Stop server           ${COLOR_SERVER}[4]${RESET}  💥  ${RED}Kill server (force)${RESET}"
+    echo -e "  ${COLOR_SERVER}[1]${RESET}  🚀  Start server               ${COLOR_SERVER}[2]${RESET}  🔄  Restart server"
+    echo -e "  ${COLOR_SERVER}[3]${RESET}  🛑  Stop server                ${COLOR_SERVER}[4]${RESET}  💥  ${RED}Kill server (force)${RESET}"
 
     menu_section "$COLOR_LOGS" "📄  CONSOLE"
     echo -e "  ${COLOR_LOGS}[5]${RESET}  🖥️  Auth console"
 
     menu_section "$COLOR_TOOLS" "🗄️  TOOLS"
-    echo -e "  ${COLOR_TOOLS}[6]${RESET}  🚀  Autostart             ${COLOR_TOOLS}[7]${RESET}  🛠️  Build tools"
-    echo -e "  ${COLOR_TOOLS}[8]${RESET}  👤  Account management    ${COLOR_TOOLS}[9]${RESET}  🌍  Realm management"
+    echo -e "  ${COLOR_TOOLS}[6]${RESET}  🚀  Autostart                  ${COLOR_TOOLS}[7]${RESET}  🛠️  Build tools"
+    echo -e "  ${COLOR_TOOLS}[8]${RESET}  👤  Account management         ${COLOR_TOOLS}[9]${RESET}  🌍  Realm management"
 
     menu_section "$COLOR_CONFIG" "📝  CONFIG & MAINTENANCE"
-    echo -e "  ${COLOR_CONFIG}[10]${RESET} 📝  Config & maintenance  ${COLOR_CONFIG}[11]${RESET} ⬇️  Update Control scripts"
+    echo -e "  ${COLOR_CONFIG}[10]${RESET} 📝  Config & maintenance       ${COLOR_CONFIG}[11]${RESET} ⬇️  Update Control scripts"
 
     menu_section "$COLOR_EXIT" "⏻  POWER & EXIT"
-    echo -e "  ${COLOR_EXIT}[12]${RESET} 🔁  Reboot LXC            ${COLOR_EXIT}[0]${RESET}  🚪  Exit menu"
+    echo -e "  ${COLOR_EXIT}[12]${RESET} 🔁  Reboot LXC                 ${COLOR_EXIT}[0]${RESET}  🚪  Exit menu"
     echo ""
     menu_footer
 }

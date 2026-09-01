@@ -93,16 +93,23 @@ apply_two_side_rbac() {
 # Enable/disable a boot autostart oneshot that drives one role's menu wrapper.
 # Shared by auth and world - only the unit name, description and wrapper differ.
 autostart_toggle() {   # autostart_toggle <service> <description> <menu-wrapper> [after-units]
-    local svc="$1" desc="$2" wrapper="$3" after="${4:-network-online.target mysql.service}" c
+    local svc="$1" desc="$2" wrapper="$3" after="${4:-network-online.target mysql.service}" c state
     if systemctl is-enabled --quiet "$svc" 2>/dev/null; then
-        echo -e "Current: ${GREEN}autostart ENABLED${RESET}"
+        state="${GREEN}ENABLED${RESET}  - the server starts automatically on LXC boot"
     elif [ -f "/etc/systemd/system/$svc" ]; then
-        echo -e "Current: ${YELLOW}unit present but disabled${RESET}"
+        state="${YELLOW}unit present but DISABLED${RESET}"
     else
-        echo -e "Current: ${RED}autostart DISABLED${RESET}"
+        state="${RED}DISABLED${RESET} - no automatic start on boot"
     fi
-    echo "  1) Enable autostart on boot        2) Disable autostart"
-    read -rp "Choice [1-2]: " c
+    submenu_title "🚀  AUTOSTART" "$COLOR_TOOLS"
+    echo -e "  Service:  ${CYAN}${svc}${RESET}"
+    echo -e "  Status:   ${state}"
+    echo ""
+    echo -e "  ${COLOR_TOOLS}[1]${RESET}  Enable autostart on boot"
+    echo -e "  ${COLOR_TOOLS}[2]${RESET}  Disable autostart"
+    echo -e "  ${COLOR_TOOLS}[0]${RESET}  Back"
+    echo ""; menu_footer
+    read -rp "🔹  Choice [0-2]: " c
     case "$c" in
         1)
             sudo -n systemctl --version >/dev/null 2>&1 \
@@ -179,6 +186,7 @@ PY
 # checkout is not readable by the server user (e.g. cloned into a 700 home).
 update_control_scripts() {   # update_control_scripts <menu-basename>
     local src="$CONTROL_SOURCE_DIR" f
+    if [ "${MENU_RUNNING:-0}" = 1 ]; then submenu_title "⬇️  UPDATE CONTROL SCRIPTS" "$COLOR_CONFIG"; fi
     if [ ! -r "$src/common.sh" ]; then
         echo "Cannot read the repo checkout at:"
         echo "  $src"

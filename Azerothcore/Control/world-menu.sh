@@ -118,9 +118,9 @@ restart_timer() {
             echo -e "\n  Next: ${CYAN}$(date -d "@$t" '+%F %H:%M')${RESET} (lead $d min)"
         fi
         echo ""; menu_footer
-        echo -e "  ${COLOR_TOOLS}[1]${RESET} Add/replace a time   ${COLOR_TOOLS}[2]${RESET} Delete a time"
-        echo -e "  ${COLOR_TOOLS}[3]${RESET} Skip a date          ${COLOR_TOOLS}[4]${RESET} Un-skip a date"
-        echo -e "  ${COLOR_TOOLS}[5]${RESET} Enable   ${COLOR_TOOLS}[6]${RESET} Disable   ${COLOR_TOOLS}[0]${RESET} Back"
+        echo -e "  ${COLOR_TOOLS}[1]${RESET} Add/replace a time        ${COLOR_TOOLS}[2]${RESET} Delete a time"
+        echo -e "  ${COLOR_TOOLS}[3]${RESET} Skip a date               ${COLOR_TOOLS}[4]${RESET} Un-skip a date"
+        echo -e "  ${COLOR_TOOLS}[5]${RESET} Enable        ${COLOR_TOOLS}[6]${RESET} Disable   ${COLOR_TOOLS}[0]${RESET} Back"
         read -rp "🔹  Choice: " c
         case "$c" in
             1) read -rp "Time HH:MM: " t; read -rp "Lead minutes (in-game warning) [15]: " l; l="${l:-15}"
@@ -249,23 +249,23 @@ render_menu() {
     hr
 
     menu_section "$COLOR_SERVER" "⚙️  SERVER CONTROL"
-    echo -e "  ${COLOR_SERVER}[1]${RESET}  🚀  Start server          ${COLOR_SERVER}[2]${RESET}  🔄  Restart server"
-    echo -e "  ${COLOR_SERVER}[3]${RESET}  🛑  Stop server           ${COLOR_SERVER}[4]${RESET}  💥  ${RED}Kill server (force)${RESET}"
+    echo -e "  ${COLOR_SERVER}[1]${RESET}  🚀  Start server               ${COLOR_SERVER}[2]${RESET}  🔄  Restart server"
+    echo -e "  ${COLOR_SERVER}[3]${RESET}  🛑  Stop server                ${COLOR_SERVER}[4]${RESET}  💥  ${RED}Kill server (force)${RESET}"
     echo -e "  ${COLOR_SERVER}[5]${RESET}  🧿  Reload config"
 
     menu_section "$COLOR_LOGS" "📄  LOGS & CONSOLE"
-    echo -e "  ${COLOR_LOGS}[6]${RESET}  💾  Save world            ${COLOR_LOGS}[7]${RESET}  🖥️  World console"
+    echo -e "  ${COLOR_LOGS}[6]${RESET}  💾  Save world                 ${COLOR_LOGS}[7]${RESET}  🖥️  World console"
 
     menu_section "$COLOR_TOOLS" "🗄️  TOOLS"
-    echo -e "  ${COLOR_TOOLS}[8]${RESET}  🚀  Autostart             ${COLOR_TOOLS}[9]${RESET}  ⏰  Daily restart timer"
-    echo -e "  ${COLOR_TOOLS}[10]${RESET} 🛠️  Build tools           ${COLOR_TOOLS}[11]${RESET} 👤  Delete account"
+    echo -e "  ${COLOR_TOOLS}[8]${RESET}  🚀  Autostart                  ${COLOR_TOOLS}[9]${RESET}  ⏰  Daily restart timer"
+    echo -e "  ${COLOR_TOOLS}[10]${RESET} 🛠️  Build tools                ${COLOR_TOOLS}[11]${RESET} 👤  Delete account"
     echo -e "  ${COLOR_TOOLS}[12]${RESET} 🐬  Character DB console"
 
     menu_section "$COLOR_CONFIG" "📝  CONFIG & MAINTENANCE"
-    echo -e "  ${COLOR_CONFIG}[13]${RESET} 📝  Config & maintenance  ${COLOR_CONFIG}[14]${RESET} ⬇️  Update Control scripts"
+    echo -e "  ${COLOR_CONFIG}[13]${RESET} 📝  Config & maintenance       ${COLOR_CONFIG}[14]${RESET} ⬇️  Update Control scripts"
 
     menu_section "$COLOR_EXIT" "⏻  POWER & EXIT"
-    echo -e "  ${COLOR_EXIT}[15]${RESET} 🔁  Reboot LXC            ${COLOR_EXIT}[0]${RESET}  🚪  Exit menu"
+    echo -e "  ${COLOR_EXIT}[15]${RESET} 🔁  Reboot LXC                 ${COLOR_EXIT}[0]${RESET}  🚪  Exit menu"
     echo ""
     menu_footer
 }
