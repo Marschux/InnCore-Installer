@@ -73,22 +73,60 @@ Lauf ok, [OFFEN] = noch nicht erreicht.
 - [NIEDRIG] Bothserver: offer_menu_launch wird 2x aufgerufen (auth, world). Der
   erste `exec sudo authmenu` ersetzt den Prozess -> world-Menue-Frage kommt nie.
 
+- [MITTEL, BESTAETIGT auf Bench] install_control_role: `repo_root="$(git -C ...
+  rev-parse --show-toplevel)"` + `sudo chown -R "$owner:$owner" "$repo_root"`
+  chownt den KOMPLETTEN Repo-Checkout rekursiv auf den Server-User. Im Test lag
+  der Checkout in /home/agent -> danach gehoerte /home/agent/WoW-Privatserver-
+  Installscript komplett acoreadmin. Wenn der Checkout dem Admin gehoert der nur
+  installiert, ist das ueberraschend. Nur chownen was noetig ist, oder warnen.
+
+- [NIEDRIG, BESTAETIGT auf Bench] install_control_role warnt (korrekt), wenn der
+  Repo-Checkout in einem 700-Home liegt: "acoreadmin cannot read .../Control
+  (needed by 'Update Control scripts')". Onboarding legt Repos aber genau nach
+  /home/agent/ -> "Update Control scripts" aus dem Menue wuerde spaeter failen.
+  Doku/Env-Konflikt: README sagt /opt, Onboarding sagt /home/agent.
+
 ### Control-Scripts - Bugs
 
-- [HOCH] common.sh autostart_toggle Option 1: Probe `sudo -n systemctl --version`
-  schlaegt IMMER fehl, weil die installierte sudoers-Datei
-  (/etc/sudoers.d/acore-control-<role>) nur ganz bestimmte systemctl-Aufrufe
-  freigibt - `systemctl --version` ist nicht dabei. -> Autostart aktivieren
-  bricht mit "Passwordless sudo for systemctl is not set up" ab, obwohl die
-  eigentlichen Aktionen erlaubt waeren. Betrifft auth UND world.
-  Fix: Probe entfernen oder gegen einen tatsaechlich erlaubten Aufruf testen
-  (z.B. `sudo -n systemctl daemon-reload --dry-run` bzw. einfach weglassen).
+- [HOCH, BESTAETIGT auf Bench] common.sh autostart_toggle Option 1: Probe
+  `sudo -n systemctl --version` schlaegt IMMER fehl, weil die installierte
+  sudoers-Datei (/etc/sudoers.d/acore-control-<role>) nur ganz bestimmte
+  systemctl-Aufrufe freigibt - `systemctl --version` ist nicht dabei.
+  Im Live-Test: authmenu -> [6] Autostart -> [1] Enable ->
+  "Passwordless sudo for systemctl is not set up - re-run the installer."
+  Gegenprobe: `sudo -n systemctl daemon-reload` = rc 0 (erlaubt),
+  `sudo -n systemctl --version` = "sudo: a password is required".
+  -> Autostart ist so wie installiert komplett unbenutzbar. Auth UND world.
+  Fix: Probe entfernen oder gegen einen erlaubten Aufruf testen
+  (z.B. `sudo -n systemctl daemon-reload`).
+
+- [HOCH, BESTAETIGT auf Bench] reexec_as_owner (common.sh) reexect NUR wenn als
+  root gestartet (`[ "$(id -u)" -eq 0 ]`). Wird authmenu/worldmenu von einem
+  Nicht-root-Nicht-Owner gestartet (z.B. ein Admin der nicht SERVER_USER ist),
+  passiert KEIN reexec und kein Fehler -> das Menue laeuft als der falsche User:
+  Server starten unter falscher UID, tmux-Session auf einem Socket den der Owner
+  nicht sieht (status_dot zeigt wirres 🟠), Auth.log/Server.log fuer den
+  Serverprozess nicht schreibbar (mode 664, owner=SERVER_USER) -> server_stop
+  meldet dann faelschlich "log does not show the database pools closing".
+  README sagt "als root oder mit sudo" - nichts erzwingt es.
+  Fix: Guard `[ id -u = 0 ] || [ id -un = SERVER_USER ] || { echo "..."; exit 1; }`.
+  (Beim sauberen Lauf via `sudo authmenu` -> reexec auf acoreadmin: alles ok,
+   "✅ Authserver stopped, database queue drained.")
 
 - [MITTEL] world-menu.sh kill_world / auth-menu.sh kill_auth:
   `[ "$c" = KILL ] && server_kill ... || echo "Cancelled."`
   Wenn server_kill den Prozess nicht totkriegt (return 1), laeuft der
   `|| echo "Cancelled."`-Zweig -> zeigt faelschlich "Cancelled." obwohl gekillt
   wurde. `if`-Konstrukt statt `&& ... ||`.
+  (Happy-Path auf Bench getestet: KILL tippen -> "authserver force-stopped",
+   Prozess weg. Nur der Fehlerpfad ist das Problem.)
+
+- [BESTAETIGT auf Bench, OK] Auth-Menue Start/Stop/Restart/Kill komplett
+  durchgetestet (als `sudo authmenu`): alle 4 funktionieren, Prozess + tmux
+  sauber. Neue InnControl-Ausgabe erscheint korrekt
+  ("🚀 Starting authserver via run-engine...", "✅ ... database queue drained.",
+   "🔄 Restarting...", "✅ ... restart completed."). Erst-Start legt acore_auth
+  an (Konsole-Prompt "create it? yes"), Migrationen laufen, Realm wird angelegt.
 
 - [MITTEL] world-restart-runner.sh: Wenn restart_next nichts liefert -> `exit 0`,
   aber systemd-Unit hat `Restart=always` (RestartSec=60) -> Service rebootet
@@ -125,11 +163,25 @@ Lauf ok, [OFFEN] = noch nicht erreicht.
 - reboot: repo `sudo systemctl reboot` (sudoers-konform), InnControl `sudo /sbin/reboot`.
   repo in sich konsistent, OK.
 
+### NEU [zu pruefen] Server.log / Auth.log Appender-Level vs server_stop-Logik
+- common.sh server_stop/server_restart greppen Server.log/Auth.log nach
+  "Closing down DatabasePool" (Drain-Erkennung) und
+  "All connections on DatabasePool .* closed" (Clean-Shutdown-Verify).
+- Dist-Default: `Appender.Server=2,5,0,Server.log,w` bzw.
+  `Appender.Auth=2,5,0,Auth.log,w` - File-Appender Level 5. Auf der Bench
+  standen die Zeilen im Auth.log drin (also Level passt), ABER: mode `w` =
+  Truncate bei jedem Start. Bei server_restart wird vor server_start geprueft,
+  daher ok. Trotzdem gegenchecken dass die Playerbots-/World-Variante mit
+  `Appender.Server=2,5,1` (repo values_world) die Zeilen auch schreibt.
+- Worldserver-Test lief noch (DB-Import), Ergebnis nachtragen.
+
 ### Noch offen / manuell
 
-- Authserver-Menue durchtesten (auf Testbench)
-- Nach install-deps auf Testbench pruefen: mysqld.cnf-Inhalt, Root-Auth,
-  ob mysql wirklich startet
+- Worldserver-Menue: Start (First-Start-Hang laut README) -> Kill -> Start ->
+  Stop/Restart durchtesten. DB-Import lief zuletzt.
+- Menue 6 (MySQL only) einzeln testen (siehe HOCH-Finding).
+- Menue 5 (Control standalone) - im Bothserver-Lauf schon inline mit-installiert,
+  separater Aufruf noch offen.
 
 
 # -------------------------------------------------------- #
