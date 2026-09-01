@@ -166,6 +166,22 @@ acc_locked() {
         && echo "'$u' is now $([ "$new" = 1 ] && echo locked || echo unlocked)."
 }
 
+acc_autoinc() {
+    local maxid cur newv
+    mysql_auth -N -s -e 'SELECT 1;' >/dev/null 2>&1 || { echo "Cannot reach the auth DB."; return 1; }
+    [[ "$(mysql_auth -N -s -e "SHOW COLUMNS FROM account LIKE 'id';" 2>/dev/null)" == *auto_increment* ]] \
+        || { echo "account.id is not AUTO_INCREMENT - nothing to set."; return 1; }
+    maxid="$(mysql_auth -N -s -e 'SELECT IFNULL(MAX(id),0) FROM account;')"
+    cur="$(mysql_auth -N -e 'SHOW CREATE TABLE account;' 2>/dev/null | grep -o 'AUTO_INCREMENT=[0-9]*' | head -1 | cut -d= -f2)"
+    echo "account: highest id = ${maxid:-0}, current AUTO_INCREMENT = ${cur:-none}"
+    echo "10000 keeps manually created accounts below 10000 and auto-created ones at 10000+."
+    read -rp "New AUTO_INCREMENT [10000]: " newv; newv="${newv:-10000}"
+    [[ "$newv" =~ ^[0-9]+$ ]] && [ "$newv" -ge 1 ] || { echo "Invalid value."; return 1; }
+    [ "$newv" -le "$maxid" ] && echo "Note: value <= MAX(id) ($maxid); MySQL will raise it to $((maxid + 1))."
+    mysql_auth -e "ALTER TABLE account AUTO_INCREMENT = $newv;" || { echo "ALTER failed."; return 1; }
+    echo "AUTO_INCREMENT now: $(mysql_auth -N -e 'SHOW CREATE TABLE account;' 2>/dev/null | grep -o 'AUTO_INCREMENT=[0-9]*' | head -1 | cut -d= -f2)"
+}
+
 acc_delete() {
     local id confirm
     read -rp "Account ID to delete: " id
@@ -187,9 +203,10 @@ account_menu() {
         echo -e "  ${COLOR_MANAGE}[6]${RESET}  Toggle locked"
         echo -e "  ${COLOR_MANAGE}[7]${RESET}  Set GM level"
         echo -e "  ${COLOR_MANAGE}[8]${RESET}  Delete account"
+        echo -e "  ${COLOR_MANAGE}[9]${RESET}  Set account AUTO_INCREMENT"
         echo -e "  ${COLOR_MANAGE}[0]${RESET}  Back"
         echo ""; menu_footer
-        read -rp "🔹  Choice [0-8]: " choice
+        read -rp "🔹  Choice [0-9]: " choice
         case "$choice" in
             1) list_table 'SELECT id, username, expansion, locked, last_login FROM account ORDER BY id;'; wait_for_user ;;
             2) run_step acc_add ;;
@@ -199,6 +216,7 @@ account_menu() {
             6) run_step acc_locked ;;
             7) run_step acc_gm ;;
             8) run_step acc_delete ;;
+            9) run_step acc_autoinc ;;
             0) return ;;
             *) echo "Invalid option."; sleep 1 ;;
         esac
