@@ -90,6 +90,60 @@ apply_two_side_rbac() {
     echo "Restart the worldserver (or '.reload rbac' in its console) to load it."
 }
 
+# Enable/disable a boot autostart oneshot that drives one role's menu wrapper.
+# Shared by auth and world - only the unit name, description and wrapper differ.
+autostart_toggle() {   # autostart_toggle <service> <description> <menu-wrapper> [after-units]
+    local svc="$1" desc="$2" wrapper="$3" after="${4:-network-online.target mysql.service}" c
+    if systemctl is-enabled --quiet "$svc" 2>/dev/null; then
+        echo -e "Current: ${GREEN}autostart ENABLED${RESET}"
+    elif [ -f "/etc/systemd/system/$svc" ]; then
+        echo -e "Current: ${YELLOW}unit present but disabled${RESET}"
+    else
+        echo -e "Current: ${RED}autostart DISABLED${RESET}"
+    fi
+    echo "  1) Enable autostart on boot        2) Disable autostart"
+    read -rp "Choice [1-2]: " c
+    case "$c" in
+        1)
+            sudo -n systemctl --version >/dev/null 2>&1 \
+                || { echo "Passwordless sudo for systemctl is not set up - re-run the installer."; return 1; }
+            sudo tee "/etc/systemd/system/$svc" >/dev/null <<EOF
+[Unit]
+Description=$desc
+Wants=network-online.target
+After=$after
+
+[Service]
+Type=oneshot
+User=$SERVER_USER
+Group=$SERVER_USER
+WorkingDirectory=$ACORE_DIR
+RemainAfterExit=yes
+KillMode=none
+ExecStartPre=/bin/sleep 5
+ExecStart=$wrapper start
+ExecStop=$wrapper stop
+TimeoutStartSec=120
+TimeoutStopSec=180
+
+[Install]
+WantedBy=multi-user.target
+EOF
+            sudo systemctl daemon-reload
+            sudo systemctl enable "$svc" >/dev/null 2>&1 \
+                && echo "Autostart enabled (the running server was not touched)."
+            ;;
+        2)
+            sudo systemctl disable "$svc" 2>/dev/null || true
+            sudo rm -f "/etc/systemd/system/$svc"
+            sudo systemctl daemon-reload
+            sudo systemctl reset-failed "$svc" 2>/dev/null || true
+            echo "Autostart disabled."
+            ;;
+        *) echo "Nothing changed." ;;
+    esac
+}
+
 # Graceful server stop, then reboot the whole LXC. The reboot is detached with
 # setsid: `systemctl reboot` tears down sshd while this shell is still attached,
 # so a foreground call makes the menu look like it crashed instead of printing
@@ -229,8 +283,20 @@ menu_section() {
     echo -e "${1}${BOLD}${2}${RESET}"
 }
 
+# Inner width for menu frames: fits the terminal (leaving a 2-col margin),
+# clamped so it neither overflows an 80-col console nor sprawls on a wide one.
+menu_width() {
+    local c
+    c="$(tput cols 2>/dev/null || echo 80)"
+    c=$((c - 4))
+    [ "$c" -gt 94 ] && c=94
+    [ "$c" -lt 60 ] && c=60
+    echo "$c"
+}
+
 box_title() {   # box_title <title> [color]
-    local t="$1" c="${2:-$CYAN}" w=86 pad rule tw
+    local t="$1" c="${2:-$CYAN}" w pad rule tw
+    w="$(menu_width)"
     rule="$(printf '═%.0s' $(seq 1 "$w"))"
     # Display width: submenu titles start with one emoji that counts as a single
     # code point but renders two columns wide - add 1 so the box stays aligned.
@@ -242,8 +308,8 @@ box_title() {   # box_title <title> [color]
     printf "${c}╚%s╝${RESET}\n" "$rule"
 }
 
-hr() { printf "${DIM}%s${RESET}\n" "$(printf '─%.0s' $(seq 1 88))"; }
-menu_footer() { printf "${CYAN}%s${RESET}\n" "$(printf '═%.0s' $(seq 1 88))"; }
+hr() { printf "${DIM}%s${RESET}\n" "$(printf '─%.0s' $(seq 1 "$(( $(menu_width) + 2 ))"))"; }
+menu_footer() { printf "${CYAN}%s${RESET}\n" "$(printf '═%.0s' $(seq 1 "$(( $(menu_width) + 2 ))"))"; }
 
 # Header for a nested submenu: same box as the main screen, tinted to the
 # section colour, followed by a blank line.

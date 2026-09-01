@@ -49,36 +49,7 @@ pull_updates() {
     [ -d "$ACORE_DIR/modules/mod-playerbots/.git" ] && { echo ""; git_update "$ACORE_DIR/modules/mod-playerbots"; }
 }
 
-autostart_world() {
-    echo "1) Enable autostart"; echo "2) Disable autostart"; read -rp "Choice [1-2]: " choice
-    case "$choice" in
-        1)
-            sudo tee "/etc/systemd/system/$WORLD_SERVICE_NAME" >/dev/null <<EOF
-[Unit]
-Description=AzerothCore Worldserver
-After=network-online.target mysql.service
-
-[Service]
-Type=oneshot
-User=$SERVER_USER
-WorkingDirectory=$ACORE_DIR
-ExecStart=$WORLD_MENU start
-ExecStop=$WORLD_MENU stop
-RemainAfterExit=yes
-KillMode=mixed
-# Modest priority boost on a clean boot (a tmux server already up on the
-# socket keeps its own nice). The server's own ProcessPriority is off in
-# values_world.conf so it no longer logs a failed setpriority().
-Nice=-5
-TimeoutStopSec=180
-
-[Install]
-WantedBy=multi-user.target
-EOF
-            sudo systemctl daemon-reload; sudo systemctl enable "$WORLD_SERVICE_NAME"; echo "Autostart enabled." ;;
-        2) sudo systemctl disable "$WORLD_SERVICE_NAME" 2>/dev/null || true; sudo rm -f "/etc/systemd/system/$WORLD_SERVICE_NAME"; sudo systemctl daemon-reload; echo "Autostart disabled." ;;
-    esac
-}
+autostart_world() { autostart_toggle "$WORLD_SERVICE_NAME" "AzerothCore Worldserver" "$WORLD_MENU"; }
 
 restart_sched_reload() {
     if systemctl is-active --quiet "$WORLD_TIMER_NAME" 2>/dev/null; then
@@ -294,7 +265,7 @@ render_menu() {
     echo -e "  ${COLOR_CONFIG}[13]${RESET} 📝  Config & maintenance  ${COLOR_CONFIG}[14]${RESET} ⬇️  Update Control scripts"
 
     menu_section "$COLOR_EXIT" "⏻  POWER & EXIT"
-    echo -e "  ${COLOR_EXIT}[15]${RESET} 🔁  Reboot LXC             ${COLOR_EXIT}[0]${RESET}  🚪  Exit menu"
+    echo -e "  ${COLOR_EXIT}[15]${RESET} 🔁  Reboot LXC            ${COLOR_EXIT}[0]${RESET}  🚪  Exit menu"
     echo ""
     menu_footer
 }

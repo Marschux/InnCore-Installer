@@ -26,36 +26,7 @@ kill_auth() {
 }
 restart_auth() { server_restart authserver "$AUTH_ENGINE" "$AUTH_BINARY" "$AUTH_CONF" "$AUTH_SESSION" "" 120; }
 
-autostart_auth() {
-    echo "1) Enable autostart"; echo "2) Disable autostart"; read -rp "Choice [1-2]: " choice
-    case "$choice" in
-        1)
-            sudo tee "/etc/systemd/system/$AUTH_SERVICE_NAME" >/dev/null <<EOF
-[Unit]
-Description=AzerothCore Authserver
-After=network-online.target mysql.service
-
-[Service]
-Type=oneshot
-User=$SERVER_USER
-WorkingDirectory=$ACORE_DIR
-ExecStart=$AUTH_MENU start
-ExecStop=$AUTH_MENU stop
-RemainAfterExit=yes
-KillMode=mixed
-# Modest priority boost on a clean boot (a tmux server already up on the
-# socket keeps its own nice). The server's own ProcessPriority is off in
-# values_world.conf so it no longer logs a failed setpriority().
-Nice=-5
-TimeoutStopSec=120
-
-[Install]
-WantedBy=multi-user.target
-EOF
-            sudo systemctl daemon-reload; sudo systemctl enable "$AUTH_SERVICE_NAME"; echo "Autostart enabled." ;;
-        2) sudo systemctl disable "$AUTH_SERVICE_NAME" 2>/dev/null || true; sudo rm -f "/etc/systemd/system/$AUTH_SERVICE_NAME"; sudo systemctl daemon-reload; echo "Autostart disabled." ;;
-    esac
-}
+autostart_auth() { autostart_toggle "$AUTH_SERVICE_NAME" "AzerothCore Authserver" "$AUTH_MENU"; }
 
 # SQL-quote a value for use inside single quotes.
 sqesc() { printf '%s' "$1" | sed "s/'/''/g"; }
@@ -156,16 +127,6 @@ acc_expansion() {
     mysql_auth -e "UPDATE account SET expansion=$new WHERE id=$id;" && echo "Expansion set to $new for '$u'."
 }
 
-acc_locked() {
-    local q row id u lk new
-    read -rp "Account name or id: " q
-    row="$(acc_find "$q")"; [ -n "$row" ] || { echo "Account not found."; return 1; }
-    IFS=$'\t' read -r id u _ lk <<< "$row"
-    new=$([ "${lk:-0}" = 1 ] && echo 0 || echo 1)
-    mysql_auth -e "UPDATE account SET locked=$new WHERE id=$id;" \
-        && echo "'$u' is now $([ "$new" = 1 ] && echo locked || echo unlocked)."
-}
-
 acc_autoinc() {
     local maxid cur newv
     mysql_auth -N -s -e 'SELECT 1;' >/dev/null 2>&1 || { echo "Cannot reach the auth DB."; return 1; }
@@ -200,23 +161,21 @@ account_menu() {
         echo -e "  ${COLOR_MANAGE}[3]${RESET}  Change password"
         echo -e "  ${COLOR_MANAGE}[4]${RESET}  Rename account (resets password)"
         echo -e "  ${COLOR_MANAGE}[5]${RESET}  Change expansion"
-        echo -e "  ${COLOR_MANAGE}[6]${RESET}  Toggle locked"
-        echo -e "  ${COLOR_MANAGE}[7]${RESET}  Set GM level"
-        echo -e "  ${COLOR_MANAGE}[8]${RESET}  Delete account"
-        echo -e "  ${COLOR_MANAGE}[9]${RESET}  Set account AUTO_INCREMENT"
+        echo -e "  ${COLOR_MANAGE}[6]${RESET}  Set GM level"
+        echo -e "  ${COLOR_MANAGE}[7]${RESET}  Delete account"
+        echo -e "  ${COLOR_MANAGE}[8]${RESET}  Set account AUTO_INCREMENT"
         echo -e "  ${COLOR_MANAGE}[0]${RESET}  Back"
         echo ""; menu_footer
-        read -rp "🔹  Choice [0-9]: " choice
+        read -rp "🔹  Choice [0-8]: " choice
         case "$choice" in
             1) list_table 'SELECT id, username, expansion, locked, last_login FROM account ORDER BY id;'; wait_for_user ;;
             2) run_step acc_add ;;
             3) run_step acc_passwd ;;
             4) run_step acc_rename ;;
             5) run_step acc_expansion ;;
-            6) run_step acc_locked ;;
-            7) run_step acc_gm ;;
-            8) run_step acc_delete ;;
-            9) run_step acc_autoinc ;;
+            6) run_step acc_gm ;;
+            7) run_step acc_delete ;;
+            8) run_step acc_autoinc ;;
             0) return ;;
             *) echo "Invalid option."; sleep 1 ;;
         esac
@@ -424,19 +383,19 @@ realm_header() {
     rows="$(mysql_auth -N -s -e "SELECT id, name, address, port,
                 CASE icon WHEN 1 THEN 'PvP' WHEN 6 THEN 'RP' WHEN 8 THEN 'RP PvP' ELSE 'Normal' END,
                 CASE flag WHEN 0 THEN 'Online' WHEN 1 THEN 'Invalid' WHEN 2 THEN 'Offline'
-                          WHEN 4 THEN 'SpecifyBuild' WHEN 32 THEN 'Recommended' WHEN 64 THEN 'New'
+                          WHEN 4 THEN 'Build' WHEN 32 THEN 'Recommended' WHEN 64 THEN 'New'
                           ELSE CONCAT('flag ', flag) END,
-                CASE timezone WHEN 1 THEN 'Development' WHEN 2 THEN 'United States' WHEN 3 THEN 'Oceanic'
-                              WHEN 4 THEN 'Latin America' WHEN 6 THEN 'Korea' WHEN 8 THEN 'English'
+                CASE timezone WHEN 1 THEN 'Dev' WHEN 2 THEN 'US' WHEN 3 THEN 'Oceanic'
+                              WHEN 4 THEN 'LatAm' WHEN 6 THEN 'Korea' WHEN 8 THEN 'English'
                               WHEN 9 THEN 'German' WHEN 10 THEN 'French' WHEN 11 THEN 'Spanish'
                               WHEN 12 THEN 'Russian' WHEN 14 THEN 'Taiwan' WHEN 16 THEN 'China'
-                              WHEN 26 THEN 'Test Server' WHEN 33 THEN 'Transfer' ELSE CONCAT('tz ', timezone) END,
+                              WHEN 26 THEN 'Test' WHEN 33 THEN 'Transfer' ELSE CONCAT('tz', timezone) END,
                 CASE allowedSecurityLevel WHEN 1 THEN 'Mod' WHEN 2 THEN 'GM' WHEN 3 THEN 'Admin' ELSE 'Player' END
              FROM realmlist ORDER BY id;" 2>/dev/null)"
     [ -n "$rows" ] || return 0
     echo -e "$(status_row 🌐 "Realms:")"
-    printf "     ${DIM}%-3s %-16.16s %-7s %-18.18s %-12s %-13s %s${RESET}\n" \
-        ID Name Type Address Flag Timezone Security
+    printf "  ${DIM}%-3s %-14.14s %-6s %-17.17s %-11s %-8s %s${RESET}\n" \
+        ID Name Type Address Flag TZ Sec
     # Pad every field to width first, then wrap in colour and emit with echo -e -
     # printf does not expand \033 inside %s arguments, so a coloured %s prints the
     # escape literally.
@@ -446,13 +405,13 @@ realm_header() {
         case "$flag" in Online) fc=$GREEN ;; Offline|Invalid) fc=$RED ;; Recommended) fc=$GOLD ;; New) fc=$CYAN ;; *) fc=$DIM ;; esac
         case "$sec" in Player) sc=$GREEN ;; Mod|GM) sc=$GOLD ;; Admin) sc=$RED ;; *) sc=$DIM ;; esac
         printf -v idc   '%-3s'     "$id"
-        printf -v namec '%-16.16s' "$name"
-        printf -v addrc '%-18.18s' "${address}:${port}"
-        printf -v iconc '%-7s'     "$icon"
-        printf -v flagc '%-12s'    "$flag"
-        printf -v tzc   '%-13s'    "$tz"
+        printf -v namec '%-14.14s' "$name"
+        printf -v addrc '%-17.17s' "${address}:${port}"
+        printf -v iconc '%-6s'     "$icon"
+        printf -v flagc '%-11s'    "$flag"
+        printf -v tzc   '%-8s'     "$tz"
         printf -v secc  '%s'       "$sec"
-        echo -e "     ${CYAN}${idc}${RESET} ${namec} ${tc}${iconc}${RESET} ${addrc} ${fc}${flagc}${RESET} ${TEAL}${tzc}${RESET} ${sc}${secc}${RESET}"
+        echo -e "  ${CYAN}${idc}${RESET} ${namec} ${tc}${iconc}${RESET} ${addrc} ${fc}${flagc}${RESET} ${TEAL}${tzc}${RESET} ${sc}${secc}${RESET}"
     done <<< "$rows"
 }
 
@@ -480,7 +439,7 @@ render_menu() {
     echo -e "  ${COLOR_CONFIG}[10]${RESET} 📝  Config & maintenance  ${COLOR_CONFIG}[11]${RESET} ⬇️  Update Control scripts"
 
     menu_section "$COLOR_EXIT" "⏻  POWER & EXIT"
-    echo -e "  ${COLOR_EXIT}[12]${RESET} 🔁  Reboot LXC             ${COLOR_EXIT}[0]${RESET}  🚪  Exit menu"
+    echo -e "  ${COLOR_EXIT}[12]${RESET} 🔁  Reboot LXC            ${COLOR_EXIT}[0]${RESET}  🚪  Exit menu"
     echo ""
     menu_footer
 }
