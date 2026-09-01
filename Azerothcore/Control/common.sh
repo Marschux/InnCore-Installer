@@ -221,19 +221,15 @@ update_control_scripts() {   # update_control_scripts <menu-basename>
         if install -m 0755 "$f" "$SCRIPT_DIR/$(basename "$f")"; then n=$((n + 1)); fi
     done
     echo "Control scripts updated from $src ($n files)"
-    # Values summaries: never overwrite the operator's tuned file, but append any
-    # keys the template has gained since (with their comment block) so new knobs
-    # actually show up after an update.
+    # Values summaries: 3-way merge against a stored baseline so template changes
+    # (new keys, changed defaults, reworded comments) come through, while any key
+    # the operator actually tuned keeps its value.
     local tpl dst
+    mkdir -p "$SCRIPT_DIR/values"
     for tpl in "$src"/values/*.conf; do
         [ -f "$tpl" ] || continue
         dst="$SCRIPT_DIR/values/$(basename "$tpl")"
-        if [ ! -f "$dst" ]; then
-            mkdir -p "$SCRIPT_DIR/values"
-            if install -m 0644 "$tpl" "$dst"; then echo "  + $(basename "$dst") (new)"; fi
-            continue
-        fi
-        merge_values_keys "$tpl" "$dst" || true
+        merge_values "$tpl" "$dst" || true
     done
     # Called from inside the menu: the running process still holds the old code,
     # so offer to re-exec. Called as `authmenu update` from a shell: just return.
@@ -285,26 +281,62 @@ restart_next() {
     printf '%s;%s;%s\n' "$next" "$nt" "$nl"
 }
 
-# Append keys present in <template> but missing from <dst>, each with the
-# contiguous comment/blank block that precedes it in the template. Existing
-# keys and their values in <dst> are left untouched.
-merge_values_keys() {   # merge_values_keys <template> <dst>
-    local tpl="$1" dst="$2" line key block="" added=0
+# The RHS of a "key = value" line: everything after the first '=', with a
+# trailing " # comment" and surrounding whitespace stripped (space-guarded so a
+# '#' inside a quoted value survives).
+_val_of() { printf '%s' "${1#*=}" | sed -E 's/[[:space:]]+#.*$//; s/^[[:space:]]+//; s/[[:space:]]+$//'; }
+_key_line() { grep -E "^[[:space:]]*$1[[:space:]]*=" "$2" 2>/dev/null | tail -1; }
+
+# 3-way merge: <template> is authoritative for layout, comments and defaults;
+# <dst> keeps the operator's value for any key they changed away from the
+# baseline (<dst>.base, the template as it was at the last merge). New keys
+# appear, retired keys vanish, operator-added extras are kept at the end.
+merge_values() {   # merge_values <template> <dst>
+    local tpl="$1" dst="$2" out line key tval bval dval kept=0 base
+    base="${dst}.base"
+    if [ ! -f "$dst" ]; then
+        install -m 0644 "$tpl" "$dst"; cp "$tpl" "$base"
+        echo "  + $(basename "$dst") (new)"; return 0
+    fi
+    # First run under this scheme: no baseline yet - assume dst started from a
+    # matching template, i.e. any difference now is an operator change.
+    [ -f "$base" ] || cp "$tpl" "$base"
+    out="$(mktemp)" || return 1
     while IFS= read -r line || [ -n "$line" ]; do
         case "$line" in
-            ''|\#*) block+="$line"$'\n'; continue ;;
+            ''|\#*) printf '%s\n' "$line" >> "$out"; continue ;;
         esac
-        key="${line%%=*}"; key="$(printf '%s' "$key" | xargs)"
-        if [ -n "$key" ] && ! grep -qE "^[[:space:]]*${key}[[:space:]]*=" "$dst"; then
-            if [ "$added" -eq 0 ]; then
-                printf '\n# --- added by update on %s ---\n' "$(date +%F)" >> "$dst"
+        key="$(printf '%s' "${line%%=*}" | xargs)"
+        [ -n "$key" ] || { printf '%s\n' "$line" >> "$out"; continue; }
+        tval="$(_val_of "$line")"
+        bval="$(_key_line "$key" "$base")"; [ -n "$bval" ] && bval="$(_val_of "$bval")"
+        dval="$(_key_line "$key" "$dst")"
+        if [ -z "$dval" ]; then
+            printf '%s\n' "$line" >> "$out"                 # brand-new key
+        else
+            dval="$(_val_of "$dval")"
+            if [ "$dval" = "$bval" ] || [ "$dval" = "$tval" ]; then
+                printf '%s\n' "$line" >> "$out"             # untouched -> take template
+            else
+                printf '%s = %s\n' "$key" "$dval" >> "$out" # operator-tuned -> keep value
+                kept=$((kept + 1))
             fi
-            printf '%s%s\n' "$block" "$line" >> "$dst"
-            added=$((added + 1))
         fi
-        block=""
     done < "$tpl"
-    if [ "$added" -gt 0 ]; then echo "  ~ $(basename "$dst"): $added new key(s) appended"; fi
+    # Operator-added keys the template never had: keep them at the end.
+    local extra=0
+    while IFS= read -r line || [ -n "$line" ]; do
+        case "$line" in ''|\#*) continue ;; esac
+        key="$(printf '%s' "${line%%=*}" | xargs)"
+        [ -n "$key" ] || continue
+        if [ -z "$(_key_line "$key" "$tpl")" ]; then
+            if [ "$extra" -eq 0 ]; then printf '\n# --- keys not in the template ---\n' >> "$out"; fi
+            printf '%s\n' "$line" >> "$out"; extra=$((extra + 1))
+        fi
+    done < "$dst"
+    cat "$out" > "$dst"; rm -f "$out"
+    cp "$tpl" "$base"
+    echo "  ~ $(basename "$dst") merged (kept $kept operator value(s)${extra:+, $extra extra})"
     return 0
 }
 

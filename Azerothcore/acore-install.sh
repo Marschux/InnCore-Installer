@@ -198,7 +198,13 @@ EOF
 
     # keep_values: copy a values/ summary only if it is not there yet, so a
     # re-install / "Update Control scripts" never overwrites the operator's edits.
-    keep_values() { [ -f "$target/values/$1" ] || sudo install -D -o "$owner" -g "$owner" -m 0644 "$src/values/$1" "$target/values/$1"; }
+    # Install a values summary if absent, and always (re)write its .base sidecar
+    # to the template just placed - 'Update Control scripts' 3-way-merges against
+    # it so template changes reach the box without clobbering operator edits.
+    keep_values() {
+        [ -f "$target/values/$1" ] || sudo install -D -o "$owner" -g "$owner" -m 0644 "$src/values/$1" "$target/values/$1"
+        sudo install -D -o "$owner" -g "$owner" -m 0644 "$src/values/$1" "$target/values/$1.base"
+    }
 
     if [ "$role" = auth ]; then
         sudo install -m 0755 "$src/auth-menu.sh" "$target/auth-menu.sh"
