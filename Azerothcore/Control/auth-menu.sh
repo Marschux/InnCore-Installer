@@ -258,38 +258,59 @@ motd_menu() {
 }
 
 realm_add() {
-    local id row nm ad la sm pt ic fl tz se gb
+    local def_id id row nm ad la sm pt ic fl tz se gb v c
     realm_list_table; echo ""
-    id="$(mysql_auth -N -s -e 'SELECT IFNULL(MAX(id),0)+1 FROM realmlist;')"
-    read -rp "Realm ID [$id]: " id; id="${id:-$id}"
+    def_id="$(mysql_auth -N -s -e 'SELECT IFNULL(MAX(id),0)+1 FROM realmlist;')"
+    read -rp "Realm ID [$def_id]: " id; id="${id:-$def_id}"
     [[ "$id" =~ ^[0-9]+$ ]] || { echo "Invalid ID."; return 1; }
     row="$(mysql_auth -N -s -e "SELECT name,address,localAddress,localSubnetMask,port,icon,flag,timezone,allowedSecurityLevel,gamebuild FROM realmlist WHERE id=$id LIMIT 1;")"
     if [ -n "$row" ]; then
         IFS=$'\t' read -r nm ad la sm pt ic fl tz se gb <<< "$row"
-        echo "Realm $id exists - values shown are the current ones (ENTER keeps them)."
+        echo "Realm $id exists - shown values are the current ones (ENTER keeps them)."
     else
         nm="Realm $id"; ad="127.0.0.1"; la="127.0.0.1"; sm="255.255.255.0"
         pt=8085; ic=0; fl=0; tz=1; se=0; gb=12340
     fi
-    local v
+    echo ""
     read -rp "Name [$nm]: " v; nm="${v:-$nm}"
-    read -rp "Address (WAN IP/domain) [$ad]: " v; ad="${v:-$ad}"
-    read -rp "Local address (LAN) [$la]: " v; la="${v:-$la}"
+    echo "  address = public WAN IP / VPN IP / domain the clients connect to"
+    read -rp "Address [$ad]: " v; ad="${v:-$ad}"
+    echo "  localAddress = LAN / internal address for clients on the same network"
+    read -rp "Local address [$la]: " v; la="${v:-$la}"
     read -rp "Local subnet mask [$sm]: " v; sm="${v:-$sm}"
-    read -rp "Port [$pt]: " v; pt="${v:-$pt}"
+    read -rp "Port (worldserver) [$pt]: " v; pt="${v:-$pt}"
     read -rp "Icon (0=Normal 1=PvP 6=RP 8=RP PvP) [$ic]: " v; ic="${v:-$ic}"
     read -rp "Flag (0=None 2=Offline 32=Recommended 64=New) [$fl]: " v; fl="${v:-$fl}"
-    read -rp "Timezone (1=Dev 2=US 8=English 9=German 10=French) [$tz]: " v; tz="${v:-$tz}"
+    read -rp "Timezone (1=Dev 2=US 8=English 9=German 10=French 11=Spanish 12=Russian) [$tz]: " v; tz="${v:-$tz}"
     read -rp "Security level (0=Player 1=Mod 2=GM 3=Admin) [$se]: " v; se="${v:-$se}"
     read -rp "Gamebuild (12340 = 3.3.5a) [$gb]: " v; gb="${v:-$gb}"
-    [[ "$pt$ic$fl$tz$se$gb" =~ ^[0-9]+$ ]] || { echo "Port/icon/flag/timezone/security/gamebuild must be numeric."; return 1; }
+    [[ "$pt" =~ ^[0-9]+$ && "$ic" =~ ^[0-9]+$ && "$fl" =~ ^[0-9]+$ && "$tz" =~ ^[0-9]+$ && "$se" =~ ^[0-9]+$ && "$gb" =~ ^[0-9]+$ ]] \
+        || { echo "Port/icon/flag/timezone/security/gamebuild must be numeric."; return 1; }
     [[ "$ad" =~ ^[A-Za-z0-9._-]+$ && "$la" =~ ^[A-Za-z0-9._-]+$ ]] || { echo "Invalid address."; return 1; }
+    echo ""
+    printf "  %-14s %s\n" "Realm ID" "$id"
+    printf "  %-14s %s\n" "Name" "$nm"
+    printf "  %-14s %s\n" "Address" "${ad}:${pt}"
+    printf "  %-14s %s\n" "Local" "${la} / ${sm}"
+    printf "  %-14s %s\n" "Icon/Flag" "$ic / $fl"
+    printf "  %-14s %s\n" "Timezone/Sec" "$tz / $se"
+    printf "  %-14s %s\n" "Gamebuild" "$gb"
+    echo ""
+    read -rp "Write this to realmlist? [y/N]: " c
+    case "$c" in y|Y|j|J) ;; *) echo "Cancelled - nothing changed."; return 0 ;; esac
     mysql_auth -e "INSERT INTO realmlist
         (id,name,address,localAddress,localSubnetMask,port,icon,flag,timezone,allowedSecurityLevel,population,gamebuild)
         VALUES ($id,'$(sqesc "$nm")','$(sqesc "$ad")','$(sqesc "$la")','$(sqesc "$sm")',$pt,$ic,$fl,$tz,$se,0,$gb)
         ON DUPLICATE KEY UPDATE name='$(sqesc "$nm")',address='$(sqesc "$ad")',localAddress='$(sqesc "$la")',
         localSubnetMask='$(sqesc "$sm")',port=$pt,icon=$ic,flag=$fl,timezone=$tz,allowedSecurityLevel=$se,gamebuild=$gb;" \
-        && echo "Realm $id '$nm' written. Worldserver needs RealmID = $id in worldserver.conf."
+        || { echo "SQL failed."; return 1; }
+    echo "Realm $id '$nm' written. The worldserver for it needs RealmID = $id in worldserver.conf."
+    if timeout 1 bash -c "exec 3<>/dev/tcp/${ad}/${pt}" 2>/dev/null; then
+        echo "Port ${ad}:${pt} is reachable."
+    else
+        echo "Note: ${ad}:${pt} is not reachable right now (worldserver down or firewalled)."
+    fi
+    [ $((fl & 3)) -ne 0 ] && echo "Note: invalid/offline bit is set - this realm is hidden from the client list."
 }
 
 realm_delete() {

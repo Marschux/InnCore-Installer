@@ -298,11 +298,12 @@ box_title() {   # box_title <title> [color]
     local t="$1" c="${2:-$CYAN}" w pad rule tw rest
     w="$(menu_width)"
     rule="$(printf '═%.0s' $(seq 1 "$w"))"
-    # Display width. Submenu titles are "<emoji><2 spaces><ASCII text>"; under a
-    # non-UTF-8 locale ${#t} counts the emoji's bytes, so measure only the ASCII
-    # tail (locale-safe) and add 2 columns for the emoji glyph.
+    # Display width. Submenu titles are "<emoji><2 spaces><ASCII text>"; ${#t}
+    # miscounts the emoji (bytes under a non-UTF-8 locale, and terminals render
+    # these glyphs 1 col wide anyway), so measure only the ASCII tail after the
+    # first space (locale-safe) and add 2: one for the emoji, one for that space.
     case "$t" in
-        [!$'\x20'-$'\x7e']*) rest="${t#* }"; tw=$(( ${#rest} + 3 )) ;;
+        [!$'\x20'-$'\x7e']*) rest="${t#* }"; tw=$(( ${#rest} + 2 )) ;;
         *) tw=${#t} ;;
     esac
     pad=$(( (w - tw) / 2 ))
