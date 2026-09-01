@@ -394,7 +394,7 @@ realm_header() {
              FROM realmlist ORDER BY id;" 2>/dev/null)"
     [ -n "$rows" ] || return 0
     echo -e "$(status_row 🌐 "Realms:")"
-    printf "  ${DIM}%-3s %-14.14s %-9s %-17.17s %-11s %-8s %s${RESET}\n" \
+    printf "  ${DIM}%-3s %-12.12s %-9s %-16.16s %-11s %-7s %s${RESET}\n" \
         ID Name Type Address Flag TZ Sec
     # Pad every field to width first, then wrap in colour and emit with echo -e -
     # printf does not expand \033 inside %s arguments, so a coloured %s prints the
@@ -405,11 +405,11 @@ realm_header() {
         case "$flag" in Online) fc=$GREEN ;; Offline|Invalid) fc=$RED ;; Recommended) fc=$GOLD ;; New) fc=$CYAN ;; *) fc=$DIM ;; esac
         case "$sec" in Player) sc=$GREEN ;; Mod|GM) sc=$GOLD ;; Admin) sc=$RED ;; *) sc=$DIM ;; esac
         printf -v idc   '%-3s'     "$id"
-        printf -v namec '%-14.14s' "$name"
-        printf -v addrc '%-17.17s' "${address}:${port}"
+        printf -v namec '%-12.12s' "$name"
+        printf -v addrc '%-16.16s' "${address}:${port}"
         printf -v iconc '%-9s'     "$icon"
         printf -v flagc '%-11s'    "$flag"
-        printf -v tzc   '%-8s'     "$tz"
+        printf -v tzc   '%-7s'     "$tz"
         printf -v secc  '%s'       "$sec"
         echo -e "  ${CYAN}${idc}${RESET} ${namec} ${tc}${iconc}${RESET} ${addrc} ${fc}${flagc}${RESET} ${TEAL}${tzc}${RESET} ${sc}${secc}${RESET}"
     done <<< "$rows"

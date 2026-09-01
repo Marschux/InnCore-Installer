@@ -289,8 +289,8 @@ menu_width() {
     local c
     c="$(tput cols 2>/dev/null || echo 80)"
     c=$((c - 4))
-    [ "$c" -gt 94 ] && c=94
-    [ "$c" -lt 60 ] && c=60
+    [ "$c" -gt 76 ] && c=76
+    [ "$c" -lt 58 ] && c=58
     echo "$c"
 }
 
