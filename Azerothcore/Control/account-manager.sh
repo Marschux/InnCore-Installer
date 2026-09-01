@@ -772,6 +772,102 @@ set_gm_level_flow() {
 }
 
 # ==================================================
+# Show account
+# ==================================================
+
+show_account_flow() {
+    local search where row up
+    local id username email reg_mail joindate last_login last_ip failed_logins
+    local locked lock_country online expansion mutetime mute_reason totaltime
+    local ban bd ubd br bby bact
+
+    clear
+    echo -e "${CYAN}==================================================${NC}"
+    echo -e "${CYAN}        SHOW ACCOUNT                              ${NC}"
+    echo -e "${CYAN}==================================================${NC}"
+    echo ""
+    echo -e "${GREEN}🐬  Auth DB:${NC} $DB_NAME @ $DB_HOST:$DB_PORT"
+    echo ""
+
+    read -p "🔹  Account name or account ID: " search
+    [ -z "$search" ] && { echo -e "${RED}❌ Input must not be empty.${NC}"; return 1; }
+
+    if [[ "$search" =~ ^[0-9]+$ ]]; then
+        where="id=$search"
+    else
+        up=$(printf '%s' "$search" | tr '[:lower:]' '[:upper:]' | xargs)
+        up=$(escape_sql "$up")
+        where="username='$up'"
+    fi
+
+    row=$(mysql_exec --batch --skip-column-names -e "
+        SELECT id, username, email, reg_mail, joindate, last_login, last_ip,
+               failed_logins, locked, lock_country, online, expansion,
+               mutetime, mute_reason, totaltime
+        FROM account
+        WHERE $where
+        LIMIT 1;
+    ")
+
+    if [ -z "$row" ]; then
+        echo -e "${RED}❌ Account not found.${NC}"
+        return 1
+    fi
+
+    IFS=$'\t' read -r id username email reg_mail joindate last_login last_ip \
+        failed_logins locked lock_country online expansion mutetime mute_reason totaltime <<< "$row"
+
+    echo ""
+    echo -e "${CYAN}==================================================${NC}"
+    printf " %-15s ${GREEN}%s${NC}\n" "🆔  ID:"          "$id"
+    printf " %-15s ${GREEN}%s${NC}\n" "👤  Username:"    "$username"
+    printf " %-15s %s\n"              "📧  Email:"       "${email:--}"
+    printf " %-15s %s\n"              "📧  Reg. email:"  "${reg_mail:--}"
+    printf " %-15s %s\n"              "🧩  Expansion:"   "$expansion  (0=Classic 1=TBC 2=WotLK)"
+    printf " %-15s %s\n"              "📅  Created:"     "${joindate:--}"
+    printf " %-15s %s\n"              "🕑  Last login:"  "${last_login:--}"
+    printf " %-15s %s\n"              "🌐  Last IP:"     "${last_ip:--}"
+    printf " %-15s %s\n"              "❌  Failed logs:" "${failed_logins:-0}"
+    if [ "${locked:-0}" = "1" ]; then
+        printf " %-15s ${RED}%s${NC}\n" "🔒  Locked:"   "yes${lock_country:+  (country ${lock_country})}"
+    else
+        printf " %-15s %s\n"           "🔒  Locked:"   "no"
+    fi
+    if [ "${online:-0}" = "1" ]; then
+        printf " %-15s ${GREEN}%s${NC}\n" "🟢  Online:"  "yes"
+    else
+        printf " %-15s %s\n"             "⚫  Online:"  "no"
+    fi
+    printf " %-15s %s\n"              "⏱️  Played:"     "$(( ${totaltime:-0} / 3600 ))h"
+    if [ -n "$mutetime" ] && [ "$mutetime" != "0" ]; then
+        printf " %-15s ${RED}%s${NC}\n" "🔇  Muted:" "$(date -d "@$mutetime" 2>/dev/null || echo "$mutetime")  (${mute_reason:-no reason})"
+    fi
+    echo -e "${CYAN}==================================================${NC}"
+    echo -e " 👑  GM access:"
+    show_account_gm_status "$id"
+    echo -e "${CYAN}==================================================${NC}"
+
+    ban=$(mysql_exec --batch --skip-column-names -e "
+        SELECT bandate, unbandate, banreason, bannedby, active
+        FROM account_banned
+        WHERE id=$id
+        ORDER BY bandate DESC
+        LIMIT 1;
+    " 2>/dev/null)
+
+    if [ -n "$ban" ]; then
+        IFS=$'\t' read -r bd ubd br bby bact <<< "$ban"
+        if [ "$bact" = "1" ]; then
+            echo -e " 🚫  ${RED}BANNED${NC} by ${bby:-?}  -  ${br:-no reason}"
+        else
+            echo -e " 🚫  ban history (currently inactive), last by ${bby:-?}"
+        fi
+    else
+        echo -e " ✅  No ban record."
+    fi
+}
+
+# ==================================================
 # Delete account
 # ==================================================
 
@@ -835,11 +931,12 @@ while true; do
     show_auth_status
     echo -e "${CYAN}📄  Config:${NC} ${AUTH_CONF:-unknown}"
     echo "--------------------------------------------------"
-    echo -e "  ${GREEN}[1]${NC}  ➕  Add account"
-    echo -e "  ${MAGENTA}[2]${NC}  ✏️  Edit account"
-    echo -e "  ${MAGENTA}[3]${NC}  🛡️  Set GM level"
-    echo -e "  ${MAGENTA}[4]${NC}  🧬  Account AUTO_INCREMENT"
-    echo -e "  ${RED}[5]${NC}  🗑️  Delete account"
+    echo -e "  ${GREEN}[1]${NC}  🔍  Show account"
+    echo -e "  ${GREEN}[2]${NC}  ➕  Add account"
+    echo -e "  ${MAGENTA}[3]${NC}  ✏️  Edit account"
+    echo -e "  ${MAGENTA}[4]${NC}  🛡️  Set GM level"
+    echo -e "  ${MAGENTA}[5]${NC}  🧬  Account AUTO_INCREMENT"
+    echo -e "  ${RED}[6]${NC}  🗑️  Delete account"
     echo ""
     echo -e "  ${CYAN}[0]${NC}  ↩️  Back"
     echo "--------------------------------------------------"
@@ -850,29 +947,35 @@ while true; do
     case "$OPTION" in
         1)
             clear
-            add_account
+            show_account_flow
             pause_menu
             ;;
 
         2)
             clear
-            edit_account
+            add_account
             pause_menu
             ;;
 
         3)
             clear
-            set_gm_level_flow
+            edit_account
             pause_menu
             ;;
 
         4)
             clear
-            "$SCRIPT_DIR/db-autoincrement.sh"
+            set_gm_level_flow
             pause_menu
             ;;
 
         5)
+            clear
+            "$SCRIPT_DIR/db-autoincrement.sh"
+            pause_menu
+            ;;
+
+        6)
             clear
             delete_account_flow
             pause_menu
