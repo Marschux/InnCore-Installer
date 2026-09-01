@@ -2,7 +2,26 @@
 #                         Offen                            #
 # -------------------------------------------------------- #
 
-## Review 2026-09-02 (statisch, nicht auf Testbench ausgefuehrt)
+## Review 2026-09-02 - Live-Lauf auf KI-Testbench-1 (Menue 1 -> 4)
+
+Status je Punkt: [BESTAETIGT] = im echten Lauf reproduziert, [WIDERLEGT] = im
+Lauf ok, [OFFEN] = noch nicht erreicht.
+
+### NEU [BESTAETIGT] mysql-apt-config whiptail-Dialog blockiert unattended-Install
+- Beim echten Lauf kam der interaktive "Configuring mysql-apt-config"-Dialog
+  (Produkt/Version/Ok) hoch und musste von Hand durchgeklickt werden -
+  mehrfach (Erstinstall 0.8.36, dann Upgrade auf 0.8.40 in world step 1).
+- Ursache: Script setzt `export DEBIAN_FRONTEND=noninteractive` (Zeile 28),
+  wickelt apt danach aber in `sudo apt ...` -> sudo env_reset strippt die
+  Variable wieder. `run_install_deps` umgeht das nur fuer den
+  `./acore.sh install-deps`-Aufruf (persistenter debconf-Frontend-Flip + trap
+  restore). Die blanken `sudo apt update && sudo apt full-upgrade -y` in
+  run_authserver/run_worldserver step 1 haben KEINEN Schutz -> Dialog bei jedem
+  mysql-apt-config-Upgrade.
+- Preseed-Werte selbst greifen (Dialog zeigte "Currently selected: mysql-8.4-lts").
+- Fix: `sudo -E apt ...` bzw. `sudo DEBIAN_FRONTEND=noninteractive apt ...`
+  ueberall, oder `Defaults env_keep += "DEBIAN_FRONTEND"`, oder mysql-apt-config
+  nach erstem Setup `apt-mark hold`.
 
 ### acore-install.sh - Bugs
 
@@ -16,36 +35,32 @@
   - Fix: in run_mysql_only denselben Repo/Preseed-Weg wie run_install_deps gehen,
     oder Menue 6 auf "nur bei bereits vorhandenem MySQL" beschraenken.
 
-- [MITTEL/verifizieren] generate_mysql_tuning haengt den Tuning-Block per
-  `tee -a` an /etc/mysql/mysql.conf.d/mysqld.cnf an - OHNE `[mysqld]`-Header.
-  - Haengt davon ab ob Oracles mysql-community-server diese Datei mit
-    `[mysqld]` anlegt. Wenn nicht (bzw. Datei existiert nicht), erzeugt tee sie
-    neu mit Keys ohne Gruppe -> mysqld startet nicht
-    ("Found option without preceding group").
-  - acore_limits.cnf im selben Verzeichnis hat sein eigenes `[mysqld]`, das
-    gilt aber nicht fuer eine andere Datei.
-  - Auf Testbench: `cat /etc/mysql/mysql.conf.d/mysqld.cnf` nach install-deps.
-  - Sicherer Fix: Tuning in eine eigene Datei mit `[mysqld]`-Header schreiben
-    (wie acore_limits.cnf), nicht an mysqld.cnf anhaengen.
+- [WIDERLEGT] generate_mysql_tuning haengt Tuning-Block per `tee -a` an
+  /etc/mysql/mysql.conf.d/mysqld.cnf an. Oracles mysql-community-server-core
+  liefert diese Datei MIT `[mysqld]`-Sektion mit -> Block landet korrekt
+  darunter, mysql startet (`systemctl is-active mysql` = active). Werte
+  plausibel (both-Profil: buffer_pool 4G, redo 1G, max_connections 310).
+  Kein Fix noetig. (Sauberer waere trotzdem eigene Datei, aber kein Bug.)
 
-- [MITTEL] `sudo mysql -u root` (setup_database) - Root-Auth nach
-  noninteractivem install-deps pruefen. mysql-community-server preseedet kein
-  Root-Passwort -> je nach Paket leeres PW / auth_socket / Abbruch. Auf
-  Testbench verifizieren ob `sudo mysql -u root` ohne -p durchlaeuft.
+- [WIDERLEGT] `sudo mysql -u root` (setup_database): root@localhost = auth_socket
+  nach dem Install -> `sudo mysql -u root` laeuft ohne -p. acore@localhost/%
+  mit mysql_native_password angelegt. Alles ok.
 
 - [MITTEL] strip_existing_mysql_tuning: `sed -i '/MARKER/,$d'` loescht ab
   Markerzeile bis Dateiende -> alles was der Operator unterhalb des Blocks in
   mysqld.cnf haette, ist weg. Zusaetzlich bleiben die Leerzeile + `# ===`-Divider
   oberhalb des Markers stehen und sammeln sich bei jedem Re-Run an.
 
-- [MITTEL] run_basic_system nutzt `apt`, schreibt /etc/hosts, timedatectl,
-  useradd, sed /etc/ssh/... alles OHNE sudo - setzt EUID 0 voraus.
-  require_root_or_sudo warnt nur, bricht nicht ab. Menue 2-6 nutzen `sudo`.
+- [MITTEL, teil-BESTAETIGT] run_basic_system nutzt `apt`, schreibt /etc/hosts,
+  timedatectl, useradd, sed /etc/ssh/... teils OHNE sudo - setzt EUID 0 voraus.
+  Im Lauf als root (sudo ./acore-install.sh) alles ok. Bricht aber, wenn jemand
+  als non-root mit passwortlosem sudo startet. require_root_or_sudo warnt nur.
   -> Item 1 entweder Root erzwingen oder konsequent sudo.
 
-- [NIEDRIG] SSH-Hardening: `sed 's/^#*PermitRootLogin.*/PermitRootLogin no/'`
-  fasst Drop-ins unter /etc/ssh/sshd_config.d/ nicht an (z.B. cloud-init
-  `PermitRootLogin yes`), die nach der Hauptdatei gewinnen.
+- [NIEDRIG, im Lauf ok] SSH-Hardening: `sed 's/^#*PermitRootLogin.*/...`
+  fasst Drop-ins unter /etc/ssh/sshd_config.d/ nicht an. Auf der Bench lag dort
+  schon `PermitRootLogin no` (99-homelab.conf) -> `sshd -T` = no, ok. Latentes
+  Risiko wenn ein Drop-in `yes` haette.
 
 - [NIEDRIG] Keine Idempotenz: `git clone ... .` in bereits vorhandenes
   AUTH_DIR/WORLD_DIR/modules schlaegt fehl, set -e bricht ab. Re-Run nicht
