@@ -155,7 +155,7 @@ menu_section() {
 }
 
 box_title() {   # box_title <title> [color]
-    local t="$1" c="${2:-$CYAN}" w=74 pad rule tw
+    local t="$1" c="${2:-$CYAN}" w=96 pad rule tw
     rule="$(printf '═%.0s' $(seq 1 "$w"))"
     # Display width: submenu titles start with one emoji that counts as a single
     # code point but renders two columns wide - add 1 so the box stays aligned.
@@ -167,8 +167,8 @@ box_title() {   # box_title <title> [color]
     printf "${c}╚%s╝${RESET}\n" "$rule"
 }
 
-hr() { printf "${DIM}%s${RESET}\n" "$(printf '─%.0s' $(seq 1 76))"; }
-menu_footer() { printf "${CYAN}%s${RESET}\n" "$(printf '═%.0s' $(seq 1 76))"; }
+hr() { printf "${DIM}%s${RESET}\n" "$(printf '─%.0s' $(seq 1 98))"; }
+menu_footer() { printf "${CYAN}%s${RESET}\n" "$(printf '═%.0s' $(seq 1 98))"; }
 
 # Header for a nested submenu: same box as the main screen, tinted to the
 # section colour, followed by a blank line.

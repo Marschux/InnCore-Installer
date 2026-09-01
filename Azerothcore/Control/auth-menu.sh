@@ -177,15 +177,22 @@ realm_header() {
     local rows id name address port icon flag tz sec
     rows="$(mysql_auth -N -s -e "SELECT id, name, address, port,
                 CASE icon WHEN 1 THEN 'PvP' WHEN 6 THEN 'RP' WHEN 8 THEN 'RP PvP' ELSE 'Normal' END,
-                flag, timezone,
+                CASE flag WHEN 0 THEN 'Online' WHEN 1 THEN 'Invalid' WHEN 2 THEN 'Offline'
+                          WHEN 4 THEN 'SpecifyBuild' WHEN 32 THEN 'Recommended' WHEN 64 THEN 'New'
+                          ELSE CONCAT('flag ', flag) END,
+                CASE timezone WHEN 1 THEN 'Development' WHEN 2 THEN 'United States' WHEN 3 THEN 'Oceanic'
+                              WHEN 4 THEN 'Latin America' WHEN 6 THEN 'Korea' WHEN 8 THEN 'English'
+                              WHEN 9 THEN 'German' WHEN 10 THEN 'French' WHEN 11 THEN 'Spanish'
+                              WHEN 12 THEN 'Russian' WHEN 14 THEN 'Taiwan' WHEN 16 THEN 'China'
+                              WHEN 26 THEN 'Test Server' WHEN 33 THEN 'Transfer' ELSE CONCAT('tz ', timezone) END,
                 CASE allowedSecurityLevel WHEN 1 THEN 'Mod' WHEN 2 THEN 'GM' WHEN 3 THEN 'Admin' ELSE 'Player' END
              FROM realmlist ORDER BY id;" 2>/dev/null)"
     [ -n "$rows" ] || return 0
     echo -e "$(status_row 🌐 "Realms:")"
-    printf "     ${DIM}%-3s %-18.18s %-7s %-22.22s %-4s %-4s %s${RESET}\n" \
-        ID Name Type Address Flag TZ Security
+    printf "     ${DIM}%-3s %-20.20s %-7s %-22.22s %-12s %-13s %s${RESET}\n" \
+        ID Name Type Address Flag Timezone Security
     while IFS=$'\t' read -r id name address port icon flag tz sec; do
-        printf "     ${CYAN}%-3s${RESET} %-18.18s ${DIM}%-7s${RESET} %-22.22s ${DIM}%-4s %-4s %s${RESET}\n" \
+        printf "     ${CYAN}%-3s${RESET} %-20.20s ${DIM}%-7s${RESET} %-22.22s ${DIM}%-12s %-13s %s${RESET}\n" \
             "$id" "$name" "$icon" "${address}:${port}" "$flag" "$tz" "$sec"
     done <<< "$rows"
 }
