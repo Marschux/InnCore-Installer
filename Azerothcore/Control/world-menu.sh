@@ -114,6 +114,19 @@ delete_account() {
     [ "$confirm" = DELETE ] && mysql_auth -e "DELETE FROM account WHERE id=$id; DELETE FROM account_access WHERE id=$id;" && echo "Account deleted."
 }
 
+# Interactive MySQL shell into the character database (CharacterDatabaseInfo
+# from worldserver.conf).
+char_db_console() {
+    local line h p u pw db
+    line="$(grep -E '^[[:space:]]*CharacterDatabaseInfo[[:space:]]*=' "$WORLD_CONF" | tail -n1)"
+    line="$(echo "$line" | cut -d= -f2- | cut -d'#' -f1 | xargs | sed 's/^"//;s/"$//')"
+    IFS=';' read -r h p u pw db <<< "$line"
+    [ -n "$h" ] && [ -n "$p" ] && [ -n "$u" ] && [ -n "$db" ] \
+        || { echo "Could not read CharacterDatabaseInfo from $WORLD_CONF."; return 1; }
+    echo "Opening $db @ $h:$p  (Ctrl-D to exit)"
+    MYSQL_PWD="$pw" mysql -h "$h" -P "$p" -u "$u" "$db"
+}
+
 apply_world_values() {
     apply_values "$SCRIPT_DIR/values/values_world.conf" "$WORLD_CONF" || return 1
     echo ""
@@ -200,12 +213,13 @@ render_menu() {
     menu_section "$COLOR_TOOLS" "🗄️  TOOLS"
     echo -e "  ${COLOR_TOOLS}[8]${RESET}  🚀  Autostart             ${COLOR_TOOLS}[9]${RESET}  ⏰  Daily restart timer"
     echo -e "  ${COLOR_TOOLS}[10]${RESET} 🛠️  Build tools           ${COLOR_TOOLS}[11]${RESET} 👤  Delete account"
+    echo -e "  ${COLOR_TOOLS}[12]${RESET} 🐬  Character DB console"
 
     menu_section "$COLOR_CONFIG" "📝  CONFIG & MAINTENANCE"
-    echo -e "  ${COLOR_CONFIG}[12]${RESET} 📝  Config & maintenance  ${COLOR_CONFIG}[13]${RESET} ⬇️  Update Control scripts"
+    echo -e "  ${COLOR_CONFIG}[13]${RESET} 📝  Config & maintenance  ${COLOR_CONFIG}[14]${RESET} ⬇️  Update Control scripts"
 
     menu_section "$COLOR_EXIT" "⏻  POWER & EXIT"
-    echo -e "  ${COLOR_EXIT}[14]${RESET} 🔁  Reboot LXC             ${COLOR_EXIT}[0]${RESET}  🚪  Exit menu"
+    echo -e "  ${COLOR_EXIT}[15]${RESET} 🔁  Reboot LXC             ${COLOR_EXIT}[0]${RESET}  🚪  Exit menu"
     echo ""
     menu_footer
 }
@@ -216,7 +230,7 @@ menu() {
     while true; do
         draw_menu render_menu
         echo ""
-        read -t 60 -rp "🔹  Select an option (0-14): " choice; rc=$?
+        read -t 60 -rp "🔹  Select an option (0-15): " choice; rc=$?
         [ "$rc" -gt 128 ] && continue
         case "$choice" in
             1) run_step start_world ;;
@@ -230,9 +244,10 @@ menu() {
             9) run_step restart_timer ;;
             10) build_menu ;;
             11) run_step delete_account ;;
-            12) config_menu ;;
-            13) run_step update_control ;;
-            14) run_step reboot_lxc worldserver "$WORLD_SESSION" "server shutdown 30" ;;
+            12) clear; char_db_console; wait_for_user ;;
+            13) config_menu ;;
+            14) run_step update_control ;;
+            15) run_step reboot_lxc worldserver "$WORLD_SESSION" "server shutdown 30" ;;
             0) clear; echo -e "${GREEN}👋  Worldserver menu closed.${RESET}"; exit 0 ;;
             *) echo "Invalid option."; sleep 1 ;;
         esac
