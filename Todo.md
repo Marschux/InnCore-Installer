@@ -2,6 +2,8 @@
 #                         Offen                            #
 # -------------------------------------------------------- #
  - MySQL Installation macht auch Performance Tuning?
+ - Authserver menü durchtesten
+ - 
 
 
 # -------------------------------------------------------- #

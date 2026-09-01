@@ -584,18 +584,18 @@ build_state_file() { echo "$SCRIPT_DIR/.built-commit.$(basename "$1")"; }
 
 build_hint() {   # build_hint <repo-dir>
     local head built
-    head="$(gitq "$1" rev-parse --short HEAD 2>/dev/null || true)"
+    head="$(gitq "$1" rev-parse HEAD 2>/dev/null || true)"
     [ -n "$head" ] || return 0
     built=""
     if [ -f "$(build_state_file "$1")" ]; then
-        built="$(cut -c1-7 < "$(build_state_file "$1")" 2>/dev/null || true)"
+        built="$(tr -d '[:space:]' < "$(build_state_file "$1")" 2>/dev/null || true)"
     fi
     if [ -z "$built" ]; then
-        echo -e "  ${DIM}Source @ $head - no build recorded yet.${RESET}"
+        echo -e "  ${DIM}Source @ ${head:0:9} - no build recorded yet.${RESET}"
     elif [ "$head" = "$built" ]; then
-        echo -e "  ${DIM}Source @ $head - matches last build.${RESET}"
+        echo -e "  ${DIM}Source @ ${head:0:9} - matches last build.${RESET}"
     else
-        echo -e "  ${YELLOW}Source @ $head - last build was $built, rebuild recommended.${RESET}"
+        echo -e "  ${YELLOW}Source @ ${head:0:9} - last build was ${built:0:9}, rebuild recommended.${RESET}"
     fi
 }
 
