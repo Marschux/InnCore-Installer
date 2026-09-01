@@ -221,6 +221,20 @@ update_control_scripts() {   # update_control_scripts <menu-basename>
         if install -m 0755 "$f" "$SCRIPT_DIR/$(basename "$f")"; then n=$((n + 1)); fi
     done
     echo "Control scripts updated from $src ($n files)"
+    # Values summaries: never overwrite the operator's tuned file, but append any
+    # keys the template has gained since (with their comment block) so new knobs
+    # actually show up after an update.
+    local tpl dst
+    for tpl in "$src"/values/*.conf; do
+        [ -f "$tpl" ] || continue
+        dst="$SCRIPT_DIR/values/$(basename "$tpl")"
+        if [ ! -f "$dst" ]; then
+            mkdir -p "$SCRIPT_DIR/values"
+            if install -m 0644 "$tpl" "$dst"; then echo "  + $(basename "$dst") (new)"; fi
+            continue
+        fi
+        merge_values_keys "$tpl" "$dst" || true
+    done
     # Called from inside the menu: the running process still holds the old code,
     # so offer to re-exec. Called as `authmenu update` from a shell: just return.
     [ "${MENU_RUNNING:-0}" = 1 ] || return 0
@@ -269,6 +283,29 @@ restart_next() {
     done < "$RESTART_TIMES_CONF"
     [ "$next" -eq 0 ] && return 1
     printf '%s;%s;%s\n' "$next" "$nt" "$nl"
+}
+
+# Append keys present in <template> but missing from <dst>, each with the
+# contiguous comment/blank block that precedes it in the template. Existing
+# keys and their values in <dst> are left untouched.
+merge_values_keys() {   # merge_values_keys <template> <dst>
+    local tpl="$1" dst="$2" line key block="" added=0
+    while IFS= read -r line || [ -n "$line" ]; do
+        case "$line" in
+            ''|\#*) block+="$line"$'\n'; continue ;;
+        esac
+        key="${line%%=*}"; key="$(printf '%s' "$key" | xargs)"
+        if [ -n "$key" ] && ! grep -qE "^[[:space:]]*${key}[[:space:]]*=" "$dst"; then
+            if [ "$added" -eq 0 ]; then
+                printf '\n# --- added by update on %s ---\n' "$(date +%F)" >> "$dst"
+            fi
+            printf '%s%s\n' "$block" "$line" >> "$dst"
+            added=$((added + 1))
+        fi
+        block=""
+    done < "$tpl"
+    if [ "$added" -gt 0 ]; then echo "  ~ $(basename "$dst"): $added new key(s) appended"; fi
+    return 0
 }
 
 current_branch() {
