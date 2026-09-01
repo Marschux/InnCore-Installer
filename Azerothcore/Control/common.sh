@@ -51,6 +51,10 @@ git_update() {   # git_update <repo-dir>
     [ -d "$dir/.git" ] || { echo "Not a git checkout: $dir"; return 1; }
     branch="$(gitq "$dir" rev-parse --abbrev-ref HEAD 2>/dev/null)"
     [ -n "$branch" ] && [ "$branch" != HEAD ] || { echo "Could not determine branch in $dir"; return 1; }
+    # A half-finished merge or rebase from a previous aborted run blocks every
+    # git operation below with an unhelpful error.
+    gitq "$dir" merge --abort >/dev/null 2>&1 || true
+    gitq "$dir" rebase --abort >/dev/null 2>&1 || true
     echo "Fetching origin ($branch) for $dir ..."
     gitq "$dir" fetch --prune origin || { echo "fetch failed."; return 1; }
     local dirty=0
@@ -361,10 +365,28 @@ server_stop() {
     fi
 }
 
+# Wait (bounded) for the server's listen port to be free again instead of a flat
+# sleep - a restart that races the old process fails to bind.
+wait_for_port_release() {   # wait_for_port_release <conf>
+    local conf="$1" port i
+    port="$(grep -hE '^[[:space:]]*(RealmServerPort|WorldServerPort)[[:space:]]*=' "$conf" 2>/dev/null \
+            | head -1 | sed 's/.*=[[:space:]]*//; s/[[:space:]"]//g; s/#.*//')"
+    [[ "$port" =~ ^[0-9]+$ ]] || { sleep 2; return 0; }
+    for i in $(seq 1 20); do
+        if ! (exec 3<>"/dev/tcp/127.0.0.1/$port") 2>/dev/null; then
+            if [ "$i" -gt 1 ]; then echo "Port $port released."; fi
+            return 0
+        fi
+        exec 3>&- 2>/dev/null || true
+        sleep 1
+    done
+    echo "Port $port still in use after 20s - starting anyway."
+}
+
 server_restart() {
     local process="$1" engine="$2" binary="$3" conf="$4" session="$5" shutdown_command="${6:-}"
     server_stop "$process" "$session" "$shutdown_command" "${7:-120}" || return 1
-    sleep 2
+    wait_for_port_release "$conf"
     server_start "$process" "$engine" "$binary" "$conf" "$session"
 }
 
