@@ -207,6 +207,7 @@ update_control_scripts() {   # update_control_scripts <menu-basename>
     # $SCRIPT_DIR is owned by the server user (this menu runs as them), no sudo.
     local files=(common.sh clean-build.sh "$1")
     if [ "$1" = world-menu.sh ]; then files+=(world-restart-runner.sh); fi
+    if [ "$1" = auth-menu.sh ]; then files+=(account-manager.sh realm-manager.sh db-autoincrement.sh); fi
     for f in "${files[@]}"; do
         [ -f "$src/$f" ] && install -m 0755 "$src/$f" "$SCRIPT_DIR/$f"
     done

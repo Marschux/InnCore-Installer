@@ -202,6 +202,9 @@ EOF
 
     if [ "$role" = auth ]; then
         sudo install -m 0755 "$src/auth-menu.sh" "$target/auth-menu.sh"
+        sudo install -m 0755 "$src/account-manager.sh" "$target/account-manager.sh"
+        sudo install -m 0755 "$src/realm-manager.sh" "$target/realm-manager.sh"
+        sudo install -m 0755 "$src/db-autoincrement.sh" "$target/db-autoincrement.sh"
         keep_values values_auth.conf
         menu="$target/auth-menu.sh"
         sudo tee "$target/control.conf" >/dev/null <<EOF
