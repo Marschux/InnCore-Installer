@@ -165,7 +165,7 @@ offer_menu_launch() {
 # gathered up front.
 install_control_role() {
     local role="$1" target="$2" acore="$3" owner="$4"
-    local src="$SCRIPT_DIR/Control" menu conf
+    local src="$SCRIPT_DIR/Control" menu conf repo_root
 
     [[ "$target" = /* && "$target" != "/" ]] || { warn "Invalid Control path: $target"; return 1; }
     [[ "$acore"  = /* && "$acore"  != "/" ]] || { warn "Invalid AzerothCore path: $acore"; return 1; }
@@ -178,6 +178,14 @@ install_control_role() {
         warn "Warning: $owner cannot read $src (needed by 'Update Control scripts')."
         warn "Clone the repo under /opt (world-readable), not a private home dir."
     fi
+
+    # 'Update Control scripts' runs `git pull` in this checkout as $owner, which
+    # needs write access to .git/ and the working tree. The installer usually
+    # runs as root, so hand the repo to $owner (same as the AzerothCore trees).
+    # If auth and world use different owners, the last one installed wins and the
+    # other role falls back to copying the files already on disk.
+    repo_root="$(git -C "$src" rev-parse --show-toplevel 2>/dev/null || true)"
+    [ -n "$repo_root" ] && sudo chown -R "$owner:$owner" "$repo_root" || true
 
     # NOPASSWD grant for exactly the systemd actions the menu runs as $owner
     # (autostart / restart timer). Without it every such action prompts for a
