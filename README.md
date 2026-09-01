@@ -56,6 +56,7 @@ Control/
 ├── common.sh        shared code (status, start/stop, apply_values)
 ├── auth-menu.sh      authmenu
 ├── world-menu.sh     worldmenu
+├── world-restart-runner.sh  daily-restart scheduler (systemd service)
 ├── clean-build.sh    wipes the build directory
 └── values/           short config summaries you edit in the menu
     ├── values_auth.conf

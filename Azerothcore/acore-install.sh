@@ -223,6 +223,7 @@ EOF
         sudo chmod 0755 /usr/local/bin/authmenu
     else
         sudo install -m 0755 "$src/world-menu.sh" "$target/world-menu.sh"
+        sudo install -m 0755 "$src/world-restart-runner.sh" "$target/world-restart-runner.sh"
         keep_values values_world.conf
         keep_values values_playerbots.conf
         menu="$target/world-menu.sh"
@@ -238,7 +239,7 @@ WORLD_CONF="\$ACORE_DIR/env/dist/etc/worldserver.conf"
 PLAYERBOTS_CONF="\$ACORE_DIR/env/dist/etc/modules/playerbots.conf"
 WORLD_SESSION='world-session'
 WORLD_SERVICE_NAME='azerothcore-world.service'
-WORLD_TIMER_NAME='azerothcore-world-restart.timer'
+WORLD_TIMER_NAME='azerothcore-world-restart.service'
 EOF
         sudo tee /usr/local/bin/worldmenu >/dev/null <<EOF
 #!/usr/bin/env bash

@@ -151,8 +151,10 @@ update_control_scripts() {   # update_control_scripts <menu-basename>
         echo "!! $src is not a git checkout - installing whatever files are there."
     fi
     # $SCRIPT_DIR is owned by the server user (this menu runs as them), no sudo.
-    for f in common.sh clean-build.sh "$1"; do
-        install -m 0755 "$src/$f" "$SCRIPT_DIR/$f"
+    local files=(common.sh clean-build.sh "$1")
+    if [ "$1" = world-menu.sh ]; then files+=(world-restart-runner.sh); fi
+    for f in "${files[@]}"; do
+        [ -f "$src/$f" ] && install -m 0755 "$src/$f" "$SCRIPT_DIR/$f"
     done
     echo "Control scripts updated from $src"
     # Called from inside the menu: the running process still holds the old code,
@@ -161,6 +163,48 @@ update_control_scripts() {   # update_control_scripts <menu-basename>
     echo ""
     read -rp "Restart the menu now to load the new version? [Y/n]: " a
     case "$a" in n|N|no|NO) return 0 ;; *) exec "$SCRIPT_DIR/$1" ;; esac
+}
+
+# --- Daily restart schedule (worldserver) -----------------------------------
+# restart_times.conf : one "HH:MM;LEAD_MINUTES" per line (LEAD = in-game warning)
+# restart_skip.conf  : "YYYY-MM-DD" (whole day) or "YYYY-MM-DD;HH:MM" (one slot)
+RESTART_TIMES_CONF="${RESTART_TIMES_CONF:-${SCRIPT_DIR:-.}/restart_times.conf}"
+RESTART_SKIP_CONF="${RESTART_SKIP_CONF:-${SCRIPT_DIR:-.}/restart_skip.conf}"
+
+restart_is_skipped() {   # restart_is_skipped <YYYY-MM-DD> <HH:MM>
+    local d="$1" t="$2" ed et
+    [ -s "$RESTART_SKIP_CONF" ] || return 1
+    while IFS=';' read -r ed et || [ -n "$ed" ]; do
+        ed="$(printf '%s' "$ed" | xargs)"; et="$(printf '%s' "$et" | xargs)"
+        [ -n "$ed" ] || continue
+        [ "${ed#\#}" = "$ed" ] || continue
+        [ "$ed" = "$d" ] || continue
+        [ -z "$et" ] && return 0
+        [ "$et" = "$t" ] && return 0
+    done < "$RESTART_SKIP_CONF"
+    return 1
+}
+
+# Echoes "EPOCH;HH:MM;LEAD" of the soonest non-skipped restart, or nothing.
+restart_next() {
+    [ -s "$RESTART_TIMES_CONF" ] || return 1
+    local now next=0 nt="" nl="" t l day dd ce
+    now="$(date +%s)"
+    while IFS=';' read -r t l || [ -n "$t" ]; do
+        t="$(printf '%s' "$t" | xargs)"; l="$(printf '%s' "$l" | xargs)"
+        [[ "$t" =~ ^([01][0-9]|2[0-3]):[0-5][0-9]$ ]] || continue
+        [[ "$l" =~ ^[0-9]+$ ]] || continue
+        for day in $(seq 0 60); do
+            dd="$(date -d "+$day days" +%Y-%m-%d)"
+            ce="$(date -d "$dd $t" +%s 2>/dev/null)" || continue
+            [ "$ce" -le "$now" ] && continue
+            restart_is_skipped "$dd" "$t" && continue
+            if [ "$next" -eq 0 ] || [ "$ce" -lt "$next" ]; then next="$ce"; nt="$t"; nl="$l"; fi
+            break
+        done
+    done < "$RESTART_TIMES_CONF"
+    [ "$next" -eq 0 ] && return 1
+    printf '%s;%s;%s\n' "$next" "$nt" "$nl"
 }
 
 current_branch() {
@@ -311,7 +355,7 @@ proc_cpu_ticks() {   # proc_cpu_ticks <process>
 # pool starts draining, and only asks (never auto-kills) after <stall_limit>
 # seconds of no progress at all.
 server_stop() {
-    local process="$1" session="$2" shutdown_command="${3:-}" stall_limit="${4:-120}"
+    local process="$1" session="$2" shutdown_command="${3:-}" stall_limit="${4:-120}" send="${5:-1}"
     local waited=0 stalled=0 draining=0 log mark=0 last_cpu last_size cpu size
 
     if ! pgrep -x "$process" >/dev/null 2>&1; then
@@ -323,11 +367,15 @@ server_stop() {
     log="$(server_log "$process" 2>/dev/null || true)"
     if [ -n "$log" ]; then mark="$(wc -l < "$log" 2>/dev/null || echo 0)"; fi
 
-    if [ -n "$shutdown_command" ] && tmx has-session -t "$session" 2>/dev/null; then
-        tmx send-keys -t "$session" "saveall" Enter
-        tmx send-keys -t "$session" "$shutdown_command" Enter
-    else
-        pkill -TERM -x "$process" 2>/dev/null || true
+    # send=0: the caller already issued its own shutdown (the restart runner
+    # sends an announce + timed `server shutdown`); just wait it out and verify.
+    if [ "$send" = 1 ]; then
+        if [ -n "$shutdown_command" ] && tmx has-session -t "$session" 2>/dev/null; then
+            tmx send-keys -t "$session" "saveall" Enter
+            tmx send-keys -t "$session" "$shutdown_command" Enter
+        else
+            pkill -TERM -x "$process" 2>/dev/null || true
+        fi
     fi
 
     last_cpu="$(proc_cpu_ticks "$process")"; last_size="$mark"

@@ -16,7 +16,10 @@ WORLD_CONF="${WORLD_CONF:-$ACORE_DIR/env/dist/etc/worldserver.conf}"
 PLAYERBOTS_CONF="${PLAYERBOTS_CONF:-$ACORE_DIR/env/dist/etc/modules/playerbots.conf}"
 WORLD_SESSION="${WORLD_SESSION:-world-session}"
 WORLD_SERVICE_NAME="${WORLD_SERVICE_NAME:-azerothcore-world.service}"
-WORLD_TIMER_NAME="${WORLD_TIMER_NAME:-azerothcore-world-restart.timer}"
+# The daily restart is a long-running scheduler service now, not an OnCalendar
+# timer - normalise whatever control.conf still carries.
+WORLD_TIMER_NAME="azerothcore-world-restart.service"
+RESTART_RUNNER="$SCRIPT_DIR/world-restart-runner.sh"
 
 update_control() { update_control_scripts world-menu.sh; }
 
@@ -77,33 +80,101 @@ EOF
     esac
 }
 
-restart_timer() {
-    echo "1) Show timer"; echo "2) Enable/change timer"; echo "3) Disable timer"
-    read -rp "Choice [1-3]: " choice
-    case "$choice" in
-        1) systemctl status "$WORLD_TIMER_NAME" --no-pager 2>/dev/null || echo "No timer configured." ;;
-        2) read -rp "Daily restart time (HH:MM): " time
-           [[ "$time" =~ ^([01][0-9]|2[0-3]):[0-5][0-9]$ ]] || { echo "Invalid time."; return; }
-           sudo tee "/etc/systemd/system/${WORLD_TIMER_NAME%.timer}.service" >/dev/null <<EOF
+restart_sched_reload() {
+    if systemctl is-active --quiet "$WORLD_TIMER_NAME" 2>/dev/null; then
+        sudo systemctl restart "$WORLD_TIMER_NAME" && echo "Scheduler reloaded with the new schedule."
+    fi
+}
+
+restart_sched_enable() {
+    [ -s "$RESTART_TIMES_CONF" ] || { echo "Add at least one restart time first."; return 1; }
+    [ -x "$RESTART_RUNNER" ] || chmod +x "$RESTART_RUNNER" 2>/dev/null
+    sudo tee "/etc/systemd/system/$WORLD_TIMER_NAME" >/dev/null <<EOF
 [Unit]
-Description=AzerothCore Worldserver scheduled restart
+Description=AzerothCore worldserver daily restart scheduler
+After=network-online.target
+
 [Service]
-Type=oneshot
+Type=simple
 User=$SERVER_USER
-ExecStart=$WORLD_MENU restart
-EOF
-           sudo tee "/etc/systemd/system/$WORLD_TIMER_NAME" >/dev/null <<EOF
-[Unit]
-Description=AzerothCore Worldserver restart timer
-[Timer]
-OnCalendar=*-*-* $time:00
-Persistent=true
+WorkingDirectory=$SCRIPT_DIR
+ExecStart=$RESTART_RUNNER
+Restart=always
+RestartSec=60
+
 [Install]
-WantedBy=timers.target
+WantedBy=multi-user.target
 EOF
-           sudo systemctl daemon-reload; sudo systemctl enable --now "$WORLD_TIMER_NAME"; echo "Timer enabled: daily at $time" ;;
-        3) sudo systemctl disable --now "$WORLD_TIMER_NAME" 2>/dev/null || true; echo "Timer disabled." ;;
-    esac
+    sudo systemctl daemon-reload
+    sudo systemctl enable --now "$WORLD_TIMER_NAME" && echo "Daily restart scheduler enabled."
+}
+
+restart_sched_disable() {
+    sudo systemctl disable --now "$WORLD_TIMER_NAME" 2>/dev/null || true
+    # Retire the old OnCalendar timer from earlier installs.
+    sudo systemctl disable --now azerothcore-world-restart.timer 2>/dev/null || true
+    sudo systemctl daemon-reload
+    echo "Daily restart scheduler disabled."
+}
+
+restart_timer() {
+    local f="$RESTART_TIMES_CONF" s="$RESTART_SKIP_CONF" nd t l d
+    touch "$f" "$s" 2>/dev/null
+    while true; do
+        clear
+        box_title "DAILY RESTART SCHEDULE" "$COLOR_TOOLS"; echo ""
+        if systemctl is-active --quiet "$WORLD_TIMER_NAME" 2>/dev/null; then
+            echo -e "  Scheduler: ${GREEN}ACTIVE${RESET}"
+        else
+            echo -e "  Scheduler: ${RED}inactive${RESET}"
+        fi
+        echo ""
+        echo "  Restart times:"
+        if [ -s "$f" ]; then
+            grep -vE '^\s*(#|$)' "$f" | while IFS=';' read -r t l; do printf "    %s   lead %s min\n" "$t" "$l"; done
+        else echo "    (none)"; fi
+        echo ""
+        echo "  Skipped:"
+        if grep -qvE '^\s*(#|$)' "$s" 2>/dev/null; then
+            grep -vE '^\s*(#|$)' "$s" | while IFS=';' read -r d t; do
+                [ -n "$t" ] && echo "    $d $t" || echo "    $d (whole day)"
+            done
+        else echo "    (none)"; fi
+        if nd="$(restart_next)"; then
+            IFS=';' read -r t l d <<< "$nd"
+            echo -e "\n  Next: ${CYAN}$(date -d "@$t" '+%F %H:%M')${RESET} (lead $d min)"
+        fi
+        echo ""; menu_footer
+        echo -e "  ${COLOR_TOOLS}[1]${RESET} Add/replace a time   ${COLOR_TOOLS}[2]${RESET} Delete a time"
+        echo -e "  ${COLOR_TOOLS}[3]${RESET} Skip a date          ${COLOR_TOOLS}[4]${RESET} Un-skip a date"
+        echo -e "  ${COLOR_TOOLS}[5]${RESET} Enable   ${COLOR_TOOLS}[6]${RESET} Disable   ${COLOR_TOOLS}[0]${RESET} Back"
+        read -rp "🔹  Choice: " c
+        case "$c" in
+            1) read -rp "Time HH:MM: " t; read -rp "Lead minutes (in-game warning) [15]: " l; l="${l:-15}"
+               if [[ "$t" =~ ^([01][0-9]|2[0-3]):[0-5][0-9]$ ]] && [[ "$l" =~ ^[0-9]+$ ]]; then
+                   grep -v "^${t};" "$f" > "$f.tmp" 2>/dev/null; mv "$f.tmp" "$f"
+                   echo "${t};${l}" >> "$f"; sort -o "$f" "$f"
+                   echo "Saved $t (lead $l min)."; restart_sched_reload
+               else echo "Invalid time or lead."; fi
+               sleep 1 ;;
+            2) read -rp "Time HH:MM to delete: " t
+               grep -v "^${t};" "$f" > "$f.tmp" 2>/dev/null; mv "$f.tmp" "$f"
+               echo "Removed $t."; restart_sched_reload; sleep 1 ;;
+            3) read -rp "Date YYYY-MM-DD: " d; read -rp "Time HH:MM (blank = whole day): " t
+               if date -d "$d" >/dev/null 2>&1; then
+                   [ -n "$t" ] && echo "${d};${t}" >> "$s" || echo "$d" >> "$s"
+                   sort -u -o "$s" "$s"; echo "Skip added."; restart_sched_reload
+               else echo "Invalid date."; fi
+               sleep 1 ;;
+            4) read -rp "Line to un-skip (YYYY-MM-DD or YYYY-MM-DD;HH:MM): " d
+               grep -vxF "$d" "$s" > "$s.tmp" 2>/dev/null; mv "$s.tmp" "$s"
+               echo "Removed."; restart_sched_reload; sleep 1 ;;
+            5) restart_sched_enable; sleep 1 ;;
+            6) restart_sched_disable; sleep 1 ;;
+            0) return ;;
+            *) echo "Invalid option."; sleep 1 ;;
+        esac
+    done
 }
 
 delete_account() {
@@ -186,8 +257,10 @@ config_menu() {
 }
 
 timer_dot() {
+    local nd next=""
+    if nd="$(restart_next)"; then next=" ${DIM}(next $(date -d "@${nd%%;*}" '+%a %H:%M'))${RESET}"; fi
     if systemctl is-active --quiet "$WORLD_TIMER_NAME" 2>/dev/null; then
-        echo -e "$(status_row ⏰ "Daily restart:")${GREEN}ENABLED${RESET}"
+        echo -e "$(status_row ⏰ "Daily restart:")${GREEN}ENABLED${RESET}${next}"
     else
         echo -e "$(status_row ⏰ "Daily restart:")${RED}DISABLED${RESET}"
     fi
@@ -241,7 +314,7 @@ menu() {
             6) run_step save_world ;;
             7) clear; tmx attach -t "$WORLD_SESSION" 2>/dev/null || { echo "No active worldserver tmux session."; wait_for_user; } ;;
             8) run_step autostart_world ;;
-            9) run_step restart_timer ;;
+            9) restart_timer ;;
             10) build_menu ;;
             11) run_step delete_account ;;
             12) clear; char_db_console; wait_for_user ;;
