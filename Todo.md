@@ -2,13 +2,16 @@
 #                         Offen                            #
 # -------------------------------------------------------- #
 
-## Noch zu testen / offen
+## Alles getestet - nichts mehr offen
 
-- Menue 4 (Bothserver) kompletter Neu-Durchlauf mit den Fixes. Bisher nur:
-  apt_get-Helper (Menue 6 live), strip_existing_mysql_tuning (3x regen, Stub),
-  SSH-Drop-in (sshd -t), install_control_role chown-Guard (Stub, beide Branches),
-  Bothserver-Menuewahl (bash -n). End-to-end mit echtem Build steht noch aus.
-  Wenn: testbench_2 (32GB/14C) macht den World-Build schneller.
+Voller Menue-4-Lauf auf testbench_2 (2026-09-02):
+- mysql-apt-config-Upgrade 0.8.36->0.8.40 lief OHNE Dialog (Hauptfix bestaetigt)
+- strip_existing_mysql_tuning: Marker-Block sauber ersetzt, genau 1 Block
+- install_control_role chown-Guard: Repo (agent-owned) NICHT rekursiv gechownt,
+  keine "cannot read"-Warnung
+- Bothserver: eine Menuewahl "[a]/[w]/[n]" statt doppeltem exec
+- Autostart enable/disable auf der frischen Vollinstallation: ok, Unit-Params
+  InnControl-konform (sleep 10, 180/240, +mysqld)
 
 ## Bewusst NICHT geaendert
 
