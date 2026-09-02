@@ -12,10 +12,16 @@ Kurzfassung:
 - Menue 4 (Bothserver): Auth+World gebaut, MySQL 8.4 installiert+getunt,
   Client-Data geladen, Control fuer beide Rollen installiert. EIN Blocker:
   mysql-apt-config-Dialog (s.u.) - musste von Hand geklickt werden.
-- Auth- und World-Menue: Start/Stop/Restart/Kill alle ok, neue Ausgabe passt.
-- 2 HOCH-Bugs bestaetigt: Autostart (sudoers-Probe) + reexec_as_owner-Guard.
-- 3 Findings widerlegt (mysqld.cnf-Header, root-auth, AllowTwoSide-Duplikat,
-  Server.log-Appender-Level).
+- Alle Control-Menue-Funktionen durchgetestet (Liste "laufen, OK" unten).
+- HOCH-Bugs bestaetigt: Autostart (sudoers-Probe), reexec_as_owner-Guard,
+  account-manager [1] Show (mute_reason), world [11] Delete account (AUTH_CONF).
+- MITTEL bestaetigt: world-restart-runner Respawn-Loop, apply_values
+  Platzhalter-Falle.
+- Widerlegt: mysqld.cnf-Header, root-auth, AllowTwoSide-Duplikat,
+  Server.log-Appender-Level, build_hint-Hash, First-Start-Hang.
+
+Bench danach: alle Prozesse gestoppt, tmux gekillt, restart-Unit disabled,
+MySQL laeuft noch, 57G frei. Snapshot-Rollback macht der User.
 
 ### NEU [BESTAETIGT] mysql-apt-config whiptail-Dialog blockiert unattended-Install
 - Beim echten Lauf kam der interaktive "Configuring mysql-apt-config"-Dialog
@@ -139,16 +145,69 @@ Kurzfassung:
    "🔄 Restarting...", "✅ ... restart completed."). Erst-Start legt acore_auth
   an (Konsole-Prompt "create it? yes"), Migrationen laufen, Realm wird angelegt.
 
-- [MITTEL] world-restart-runner.sh: Wenn restart_next nichts liefert -> `exit 0`,
-  aber systemd-Unit hat `Restart=always` (RestartSec=60) -> Service rebootet
-  sich alle 60s neu und loggt. Sollte bei leerer Konfig lieber schlafen/idlen
-  oder die Unit disabled lassen.
+- [HOCH, BESTAETIGT auf Bench] account-manager.sh [1] Show account KAPUTT:
+  SELECT fragt Spalte `mute_reason` aus `account` - die Spalte heisst aber
+  `mutereason` (ohne Unterstrich) im aktuellen AC-Schema. Folge:
+  "ERROR 1054 Unknown column 'mute_reason'" und danach faelschlich
+  "❌ Account not found.". Betrifft account-manager.sh Zeilen ~781, ~806, ~818,
+  ~843 (Variable + SELECT + read + printf). NICHT aus InnControl uebernommen -
+  Repo-Eigenbau (Commit 52d0434). InnControl 08_account_manager.sh hat kein
+  mute_reason. Fix: `mute_reason` -> `mutereason` an allen 4 Stellen.
 
-- [NIEDRIG] common.sh apply_values: sed-Delimiter `@` - Werte mit `@` (z.B.
+- [HOCH, BESTAETIGT auf Bench] world-menu.sh [11] Delete account KAPUTT:
+  "common.sh: line 645: AUTH_CONF: unbound variable / Could not read
+  LoginDatabaseInfo." common.sh read_login_database() liest hart aus
+  `$AUTH_CONF`, das aber nur in der auth-control.conf gesetzt ist. Die
+  world-control.conf hat nur WORLD_CONF. Auf einer World-only-Box gibt es gar
+  keine authserver.conf. -> Feature komplett tot. Auch mysql_auth (common.sh)
+  ist damit im world-Menue unbrauchbar.
+  Fix: read_login_database Conf-Pfad als Parameter, world liest LoginDatabaseInfo
+  aus WORLD_CONF (worldserver.conf hat die Zeile auch).
+
+- [MITTEL, BESTAETIGT auf Bench] world-restart-runner.sh Respawn-Loop:
+  Alle Restart-Zeiten loeschen waehrend Scheduler enabled -> runner
+  "No restart times configured - nothing to do." -> exit 0 -> Restart=always
+  (RestartSec=60) -> systemd startet ihn im Minutentakt neu (restart counter
+  1,2,3...). Menue/timer_dot zeigt "inactive" (is-active waehrend `activating`
+  = false), obwohl die Unit in einer Respawn-Schleife haengt. Erst [6] Disable
+  stoppt es. Fix: leere Konfig -> lange schlafen statt exit, oder Unit
+  Type=oneshot ohne Restart=always, oder beim Zeiten-Loeschen auto-disablen.
+
+- [MITTEL, BESTAETIGT auf Bench] apply_values Platzhalter-Falle: die
+  ausgelieferten values_auth/values_world/values_playerbots.conf enthalten in
+  den *DatabaseInfo-Zeilen den Literal-Platzhalter `;password;`. "Apply" ohne
+  vorher zu editieren schreibt `password` woertlich in die echte .conf und
+  killt damit still ALLE DB-Verbindungen (im Test 3x reproduziert: auth, world,
+  playerbots). Timestamped Backup wird zwar angelegt. README sagt "erst
+  editieren" - aber kein Guard/keine Warnung. Fix: apply_values skippt/warnt bei
+  offensichtlichen Platzhaltern (`password`, `CHANGEME`...), oder die Summaries
+  kommentieren die Credential-Zeile aus.
+
+- [MITTEL] common.sh apply_values: sed-Delimiter `@` - Werte mit `@` (z.B.
   Mailadressen) wuerden sed brechen. Aktuell kein betroffener Key, aber fragil.
 
 - [NIEDRIG] restart_timer (world-menu.sh): Lead-Minuten nur `^[0-9]+$`, keine
   Range-Pruefung. InnControl validate_minutes verlangt 1..1440.
+
+- [BESTAETIGT auf Bench, OK] Folgende Control-Funktionen getestet, laufen:
+  * account-manager: Add / Edit (pw, expansion, username) / Set GM level /
+    AUTO_INCREMENT (db-autoincrement.sh) / Delete  -- nur [1] Show ist kaputt
+  * realm-manager: Realmlist Add/Delete/Show, MOTD Add/Edit/Show/Delete
+  * auth Config: apply_values (values_auth), Cross-faction (two-side) RBAC
+    ("permission 195 links 8 two-side permission(s)")
+  * world Config: apply values_world, apply values_playerbots, Edit any .conf
+  * world Daily-Restart-Timer: Zeit hinzufuegen, Enable (systemd-Unit angelegt,
+    runner rechnet "Next restart at 06:00" korrekt), Disable
+  * world Character DB console (oeffnet acore_characters via mysql)
+  * world/auth Start/Stop/Restart/Kill (alle 4, neue Ausgabe)
+  * build_hint "Source @ 148372800" ist KEIN Bug - der HEAD-SHA faengt
+    tatsaechlich mit 9 Ziffern an (git log --oneline zeigt dasselbe)
+
+- [NIEDRIG, BESTAETIGT] "Update Control scripts" (auth [11] / world [14]) failt
+  wenn Repo in /home/agent liegt - auch NACH dem chown durch install_control_role,
+  weil /home/agent selbst 700 ist (kein Traverse fuer acoreadmin). Meldung ist
+  klar ("Re-clone somewhere ... can read, e.g. /opt"). Env-Konflikt mit
+  Onboarding (/home/agent). Kein Crash.
 
 ### Abweichungen von InnControl (Funktion/Logik prüfen)
 
