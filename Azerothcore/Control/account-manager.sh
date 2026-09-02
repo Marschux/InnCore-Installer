@@ -814,8 +814,14 @@ show_account_flow() {
         return 1
     fi
 
-    IFS=$'\t' read -r id username email reg_mail joindate last_login last_ip \
-        failed_logins locked lock_country online expansion mutetime mutereason totaltime <<< "$row"
+    # `read` with a whitespace IFS collapses empty fields (email/last_login are
+    # often ''), shifting every column. mapfile -d keeps them.
+    local -a f
+    mapfile -td $'\t' f < <(printf '%s' "$row")
+    id=${f[0]}       username=${f[1]}   email=${f[2]}        reg_mail=${f[3]}
+    joindate=${f[4]} last_login=${f[5]} last_ip=${f[6]}      failed_logins=${f[7]}
+    locked=${f[8]}   lock_country=${f[9]} online=${f[10]}    expansion=${f[11]}
+    mutetime=${f[12]} mutereason=${f[13]} totaltime=${f[14]}
 
     echo ""
     echo -e "${CYAN}==================================================${NC}"
