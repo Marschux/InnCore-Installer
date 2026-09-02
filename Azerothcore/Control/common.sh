@@ -27,6 +27,15 @@ reexec_as_owner() {
     if [ "$(id -u)" -eq 0 ] && [ -n "${SERVER_USER:-}" ] && [ "$SERVER_USER" != root ]; then
         exec sudo -u "$SERVER_USER" -- "$@"
     fi
+    # Non-root and not the owner: no re-exec happens, so tmux sessions, git and
+    # the server logs land under the wrong account with no obvious error. Warn
+    # loudly but keep going (some setups drive this as a third dedicated user).
+    if [ "$(id -u)" -ne 0 ] && [ -n "${SERVER_USER:-}" ] && [ "$(id -un)" != "$SERVER_USER" ]; then
+        echo -e "${YELLOW}⚠️  Running as $(id -un), not root and not $SERVER_USER.${RESET}" >&2
+        echo -e "${YELLOW}   Start this menu with 'sudo ${0##*/}' or as $SERVER_USER, or tmux/logs${RESET}" >&2
+        echo -e "${YELLOW}   end up owned by the wrong user.${RESET}" >&2
+        sleep 2
+    fi
 }
 
 # Run a single command as the owner (used for the rare root-invoked path).
@@ -93,7 +102,7 @@ apply_two_side_rbac() {
 # Enable/disable a boot autostart oneshot that drives one role's menu wrapper.
 # Shared by auth and world - only the unit name, description and wrapper differ.
 autostart_toggle() {   # autostart_toggle <service> <description> <menu-wrapper> [after-units]
-    local svc="$1" desc="$2" wrapper="$3" after="${4:-network-online.target mysql.service}" c state
+    local svc="$1" desc="$2" wrapper="$3" after="${4:-network-online.target mysql.service mysqld.service}" c state
     if systemctl is-enabled --quiet "$svc" 2>/dev/null; then
         state="${GREEN}ENABLED${RESET}  - the server starts automatically on LXC boot"
     elif [ -f "/etc/systemd/system/$svc" ]; then
@@ -112,7 +121,10 @@ autostart_toggle() {   # autostart_toggle <service> <description> <menu-wrapper>
     read -rp "🔹  Choice [0-2]: " c
     case "$c" in
         1)
-            sudo -n systemctl --version >/dev/null 2>&1 \
+            # Probe with a call the installed sudoers grant actually allows
+            # (daemon-reload is idempotent). `systemctl --version` is NOT in the
+            # grant, so probing with it always failed and blocked enabling.
+            sudo -n systemctl daemon-reload >/dev/null 2>&1 \
                 || { echo "Passwordless sudo for systemctl is not set up - re-run the installer."; return 1; }
             sudo tee "/etc/systemd/system/$svc" >/dev/null <<EOF
 [Unit]
@@ -127,11 +139,11 @@ Group=$SERVER_USER
 WorkingDirectory=$ACORE_DIR
 RemainAfterExit=yes
 KillMode=none
-ExecStartPre=/bin/sleep 5
+ExecStartPre=/bin/sleep 10
 ExecStart=$wrapper start
 ExecStop=$wrapper stop
-TimeoutStartSec=120
-TimeoutStopSec=180
+TimeoutStartSec=180
+TimeoutStopSec=240
 
 [Install]
 WantedBy=multi-user.target
@@ -640,9 +652,16 @@ server_reload() {
     echo -e "${DIM}💡  Note: some changes still require a real restart.${RESET}"
 }
 
+# Reads LoginDatabaseInfo (host;port;user;pass;db). The auth menu passes
+# authserver.conf via $AUTH_CONF; the world menu has no $AUTH_CONF, so fall back
+# to worldserver.conf ($WORLD_CONF) which carries the same line pointing at the
+# auth DB. Without the fallback `worldmenu -> Delete account` died on `set -u`.
 read_login_database() {
-    local line
-    line=$(grep -E '^[[:space:]]*LoginDatabaseInfo[[:space:]]*=' "$AUTH_CONF" | tail -n 1)
+    local conf="${1:-}" line
+    [ -n "$conf" ] || conf="${AUTH_CONF:-}"
+    [ -n "$conf" ] || conf="${WORLD_CONF:-}"
+    [ -n "$conf" ] && [ -f "$conf" ] || return 1
+    line=$(grep -E '^[[:space:]]*LoginDatabaseInfo[[:space:]]*=' "$conf" | tail -n 1)
     line=$(echo "$line" | cut -d= -f2- | cut -d# -f1 | xargs | sed 's/^"//;s/"$//')
     IFS=';' read -r DB_HOST DB_PORT DB_USER DB_PASS DB_NAME <<< "$line"
     [ -n "${DB_HOST:-}" ] && [ -n "${DB_PORT:-}" ] && [ -n "${DB_USER:-}" ] && [ -n "${DB_NAME:-}" ]
@@ -724,6 +743,7 @@ safe_build() {   # safe_build <build-dir> <repo-dir> <apps-build> <scripts>
 # skipped. A timestamped backup of the target is written first.
 apply_values() {
     local values="$1" target="$2" backup key value ek ev
+    local d=$'\x1f'   # sed delimiter - a byte that can't occur in a .conf value
     require_path "$values" || return 1
     require_path "$target" || return 1
 
@@ -739,10 +759,18 @@ apply_values() {
         # quoting. Only strip a trailing " # comment" (space-guarded so a '#'
         # inside a quoted value or password survives) and surrounding whitespace.
         value="$(printf '%s' "$value" | sed -E 's/[[:space:]]+#.*$//; s/^[[:space:]]+//; s/[[:space:]]+$//')"
+        # Guard against applying an unedited summary: the shipped *DatabaseInfo
+        # lines carry a literal "password" placeholder, and writing that over a
+        # working config silently breaks every DB connection.
+        case "$value" in
+            *";password;"*|*";CHANGEME;"*|'"password"'|password|CHANGEME)
+                echo -e "  ${YELLOW}– skipped (edit the summary first, still a placeholder):${RESET} $key"
+                continue ;;
+        esac
         ek="$(printf '%s' "$key"   | sed 's/[][\\/.^$*+?{}|()]/\\&/g')"
-        ev="$(printf '%s' "$value" | sed 's/[\\/&]/\\&/g')"
+        ev="$(printf '%s' "$value" | sed "s/[\\\\${d}&]/\\\\&/g")"
         if grep -qE "^${ek}[[:space:]]*=" "$target"; then
-            sed -i -E "s@^${ek}[[:space:]]*=.*@${key} = ${ev}@" "$target"
+            sed -i -E "s${d}^${ek}[[:space:]]*=.*${d}${key} = ${ev}${d}" "$target"
             echo -e "  ${GREEN}✓${RESET} $key = $value"
         else
             echo -e "  ${YELLOW}– skipped (not in target):${RESET} $key"

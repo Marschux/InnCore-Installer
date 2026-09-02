@@ -30,7 +30,11 @@ kill_world() {
     echo "Use [3] Stop unless the server is genuinely stuck (e.g. hangs on"
     echo "\"Waiting for N characters loading into database\" on a first start)."
     read -rp "Type KILL to confirm: " c
-    [ "$c" = KILL ] && server_kill worldserver "$WORLD_SESSION" || echo "Cancelled."
+    if [ "$c" = KILL ]; then
+        server_kill worldserver "$WORLD_SESSION"
+    else
+        echo "Cancelled."
+    fi
 }
 restart_world() { server_restart worldserver "$WORLD_ENGINE" "$WORLD_BINARY" "$WORLD_CONF" "$WORLD_SESSION" "server shutdown 30" 180; }
 reload_world()  { server_reload worldserver "$WORLD_SESSION"; }
@@ -124,7 +128,7 @@ restart_timer() {
         read -rp "🔹  Choice: " c
         case "$c" in
             1) read -rp "Time HH:MM: " t; read -rp "Lead minutes (in-game warning) [15]: " l; l="${l:-15}"
-               if [[ "$t" =~ ^([01][0-9]|2[0-3]):[0-5][0-9]$ ]] && [[ "$l" =~ ^[0-9]+$ ]]; then
+               if [[ "$t" =~ ^([01][0-9]|2[0-3]):[0-5][0-9]$ ]] && [[ "$l" =~ ^[0-9]+$ ]] && [ "$l" -ge 1 ] && [ "$l" -le 1440 ]; then
                    grep -v "^${t};" "$f" > "$f.tmp" 2>/dev/null; mv "$f.tmp" "$f"
                    echo "${t};${l}" >> "$f"; sort -o "$f" "$f"
                    echo "Saved $t (lead $l min)."; restart_sched_reload

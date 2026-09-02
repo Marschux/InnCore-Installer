@@ -778,7 +778,7 @@ set_gm_level_flow() {
 show_account_flow() {
     local search where row up
     local id username email reg_mail joindate last_login last_ip failed_logins
-    local locked lock_country online expansion mutetime mute_reason totaltime
+    local locked lock_country online expansion mutetime mutereason totaltime
     local ban bd ubd br bby bact
 
     clear
@@ -803,7 +803,7 @@ show_account_flow() {
     row=$(mysql_exec --batch --skip-column-names -e "
         SELECT id, username, email, reg_mail, joindate, last_login, last_ip,
                failed_logins, locked, lock_country, online, expansion,
-               mutetime, mute_reason, totaltime
+               mutetime, mutereason, totaltime
         FROM account
         WHERE $where
         LIMIT 1;
@@ -815,7 +815,7 @@ show_account_flow() {
     fi
 
     IFS=$'\t' read -r id username email reg_mail joindate last_login last_ip \
-        failed_logins locked lock_country online expansion mutetime mute_reason totaltime <<< "$row"
+        failed_logins locked lock_country online expansion mutetime mutereason totaltime <<< "$row"
 
     echo ""
     echo -e "${CYAN}==================================================${NC}"
@@ -840,7 +840,7 @@ show_account_flow() {
     fi
     printf " %-15s %s\n"              "⏱️  Played:"     "$(( ${totaltime:-0} / 3600 ))h"
     if [ -n "$mutetime" ] && [ "$mutetime" != "0" ]; then
-        printf " %-15s ${RED}%s${NC}\n" "🔇  Muted:" "$(date -d "@$mutetime" 2>/dev/null || echo "$mutetime")  (${mute_reason:-no reason})"
+        printf " %-15s ${RED}%s${NC}\n" "🔇  Muted:" "$(date -d "@$mutetime" 2>/dev/null || echo "$mutetime")  (${mutereason:-no reason})"
     fi
     echo -e "${CYAN}==================================================${NC}"
     echo -e " 👑  GM access:"

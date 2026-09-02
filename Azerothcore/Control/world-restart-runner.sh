@@ -17,7 +17,10 @@ SESSION="${WORLD_SESSION:-world-session}"
 log() { echo "[$(date '+%F %T')] $*"; }
 wait_until() { local t="$1"; while [ "$(date +%s)" -lt "$t" ]; do sleep 5; done; }
 
-nd="$(restart_next)" || { log "No restart times configured - nothing to do."; exit 0; }
+# No times configured: don't exit (Restart=always would respawn us every 60s in
+# a tight loop). Sleep, then exit so systemd re-checks in ~an hour - a time
+# added later still gets picked up without a respawn storm.
+nd="$(restart_next)" || { log "No restart times configured - sleeping 1h before re-check."; sleep 3600; exit 0; }
 IFS=';' read -r target time lead <<< "$nd"
 lead_s=$((lead * 60))
 now="$(date +%s)"

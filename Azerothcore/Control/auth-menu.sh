@@ -22,7 +22,11 @@ start_auth()   { server_start authserver "$AUTH_ENGINE" "$AUTH_BINARY" "$AUTH_CO
 stop_auth()    { server_stop authserver "$AUTH_SESSION" "" 120; }
 kill_auth() {
     read -rp "Type KILL to force-stop the authserver: " c
-    [ "$c" = KILL ] && server_kill authserver "$AUTH_SESSION" || echo "Cancelled."
+    if [ "$c" = KILL ]; then
+        server_kill authserver "$AUTH_SESSION"
+    else
+        echo "Cancelled."
+    fi
 }
 restart_auth() { server_restart authserver "$AUTH_ENGINE" "$AUTH_BINARY" "$AUTH_CONF" "$AUTH_SESSION" "" 120; }
 

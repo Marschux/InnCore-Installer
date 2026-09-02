@@ -85,13 +85,16 @@ config.
 ### Starting the Worldserver the first time
 
 1. `Config` → edit and apply `values_world.conf` and `values_playerbots.conf`.
-   The three `*DatabaseInfo` lines need the auth server's address and the real
-   password. If Auth and World are on different machines, `LoginDatabaseInfo`
-   is not `127.0.0.1`.
+   The `*DatabaseInfo` lines need the auth server's address and the real
+   password: three in `values_world.conf` (`Login`/`World`/`Character`) plus
+   `PlayerbotsDatabaseInfo` in `values_playerbots.conf`. Replace the `password`
+   placeholder — applying an unedited summary is now skipped with a warning. If
+   Auth and World are on different machines, `LoginDatabaseInfo` is not
+   `127.0.0.1`.
 2. `Start server`, then `World console` → confirm creating `acore_world`,
    `acore_characters` and `acore_playerbots`.
-3. The first start gets stuck at
-   `Waiting for N characters loading into database`. This is a known
-   Playerbots issue. Leave the console, use `Kill server` (type `KILL`), then
-   `Start server` again. The second start finishes normally.
+3. The first start can hang at `Waiting for N characters loading into database`
+   (a known Playerbots issue, load-dependent). If it does: leave the console,
+   `Kill server` (type `KILL`), then `Start server` again — the second start
+   finishes normally.
 4. Optional: `Autostart` and the `Daily restart timer`.
