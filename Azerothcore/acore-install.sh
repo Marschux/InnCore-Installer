@@ -814,7 +814,9 @@ setup_mysql_apt_repo() {
     fi
     step "Add MySQL 8.4 APT repository"
     apt_get update
-    apt_get install -y ca-certificates curl
+    # curl to fetch the .deb; lsb-release is a pre-dependency of mysql-apt-config
+    # and is not on a minimal Debian.
+    apt_get install -y ca-certificates curl lsb-release
     sudo debconf-set-selections <<'EOF'
 mysql-apt-config mysql-apt-config/select-server select mysql-8.4-lts
 mysql-apt-config mysql-apt-config/select-product select Ok
@@ -826,7 +828,8 @@ EOF
     deb="$(mktemp --suffix=.deb)"
     curl -fsSL -o "$deb" \
         "https://dev.mysql.com/get/mysql-apt-config_${MYSQL_APT_CONFIG_VERSION}_all.deb"
-    sudo DEBIAN_FRONTEND=noninteractive dpkg -i "$deb"
+    sudo DEBIAN_FRONTEND=noninteractive dpkg -i "$deb" \
+        || sudo DEBIAN_FRONTEND=noninteractive apt-get -yf install
     rm -f "$deb"
     apt_get update
 }
