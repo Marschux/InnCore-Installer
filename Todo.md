@@ -4,14 +4,11 @@
 
 ## Noch zu testen / offen
 
-- Menue 6 (MySQL only) auf FRISCHER Bench: Fix ist drin
-  (setup_mysql_apt_repo), aber der Download-Pfad des mysql-apt-config .deb
-  wurde noch nicht real getestet (auf der Testbench war das Repo schon da ->
-  nur der Skip-Guard lief).
-- reexec_as_owner-Warnung: Code-Pfad nur gelesen, nicht live ausgeloest
-  (Menue lief im Test immer via `sudo`).
-- Menue 4/6 kompletter Neu-Durchlauf mit den Fixes (Build war schon da, daher
-  nur Teilpfade getestet).
+- Menue 4 (Bothserver) kompletter Neu-Durchlauf mit den Fixes. Bisher nur:
+  apt_get-Helper (Menue 6 live), strip_existing_mysql_tuning (3x regen, Stub),
+  SSH-Drop-in (sshd -t), install_control_role chown-Guard (Stub, beide Branches),
+  Bothserver-Menuewahl (bash -n). End-to-end mit echtem Build steht noch aus.
+  Wenn: testbench_2 (32GB/14C) macht den World-Build schneller.
 
 ## Bewusst NICHT geaendert
 
@@ -56,9 +53,14 @@ common.sh:
 
 acore-install.sh:
 - apt_get()-Helper (`sudo DEBIAN_FRONTEND=noninteractive apt-get`) ueberall ->
-  mysql-apt-config-whiptail-Dialog kommt nicht mehr.
+  mysql-apt-config-whiptail-Dialog kommt nicht mehr. Live auf frischer Bench:
+  Menue 6 komplett ohne Dialog durch.
 - Menue 6: setup_mysql_apt_repo() richtet das MySQL-8.4-APT-Repo selbst ein
-  (Preseed + .deb + apt update), Guard wenn schon vorhanden.
+  (Preseed + .deb + apt update), inkl. lsb-release (pre-dep von mysql-apt-config,
+  fehlt auf minimalem Debian - erst so gefunden) + `apt -f install` fallback.
+  Guard wenn Repo schon da. Live testbench_2: MySQL 8.4.11 + Tuning + acore-User.
+- reexec_as_owner-Warnung: live ausgeloest (als agent bei SERVER_USER=nobody ->
+  Warnung + weiter, RC 0).
 - strip_existing_mysql_tuning: nur noch Bereich zwischen BEGIN/END-Markern
   (`# >>> AZEROTHCORE MYSQL PERFORMANCE TUNING >>>` .. `<<<`), Alt-Format-
   Fallback. Live: 3x regeneriert -> genau 1 Block, mysql startet.
