@@ -39,43 +39,11 @@ wait_for_user() {
     read -r
 }
 
-mysql_exec() {
-    MYSQL_PWD="$DB_PASS" mysql \
-        -h "$DB_HOST" \
-        -P "$DB_PORT" \
-        -u "$DB_USER" \
-        "$DB_NAME" \
-        "$@"
-}
+# mysql_auth (runs a query as the LoginDatabaseInfo user) and read_login_database
+# (parses authserver.conf into DB_HOST..DB_NAME) both come from common-ops.sh.
 
 escape_sql() {
     printf "%s" "$1" | sed "s/'/''/g"
-}
-
-# Reads LoginDatabaseInfo from authserver.conf and sets:
-#   DB_HOST  DB_PORT  DB_USER  DB_PASS  DB_NAME
-# Returns 1 on failure (does not exit, let the caller decide).
-read_login_db_info() {
-    local conf_file="${1:-${AUTH_CONF:-}}"
-    local line
-
-    if [ -z "$conf_file" ]; then
-        return 1
-    fi
-
-    if [ ! -f "$conf_file" ]; then
-        return 1
-    fi
-
-    line=$(grep -E "^[[:space:]]*LoginDatabaseInfo[[:space:]]*=" "$conf_file" | tail -n 1)
-    line=$(echo "$line" | cut -d'=' -f2- | cut -d'#' -f1 | xargs)
-    line=$(echo "$line" | sed 's/^"//;s/"$//')
-
-    IFS=';' read -r DB_HOST DB_PORT DB_USER DB_PASS DB_NAME <<< "$line"
-
-    if [ -z "$DB_HOST" ] || [ -z "$DB_PORT" ] || [ -z "$DB_USER" ] || [ -z "$DB_NAME" ]; then
-        return 1
-    fi
 }
 
 validate_number() {
@@ -135,7 +103,7 @@ find_account() {
     local escaped
 
     if [[ "$input" =~ ^[0-9]+$ ]]; then
-        mysql_exec --batch --skip-column-names -e "
+        mysql_auth --batch --skip-column-names -e "
             SELECT id, username, expansion, locked
             FROM account
             WHERE id=$input
@@ -145,7 +113,7 @@ find_account() {
         upper=$(echo "$input" | tr '[:lower:]' '[:upper:]' | xargs)
         escaped=$(escape_sql "$upper")
 
-        mysql_exec --batch --skip-column-names -e "
+        mysql_auth --batch --skip-column-names -e "
             SELECT id, username, expansion, locked
             FROM account
             WHERE username='$escaped'
@@ -179,7 +147,7 @@ show_auth_status() {
 get_next_account_id() {
     local max_id
 
-    max_id=$(mysql_exec -N -s -e "SELECT IFNULL(MAX(id),0) FROM account WHERE id < 10000;")
+    max_id=$(mysql_auth -N -s -e "SELECT IFNULL(MAX(id),0) FROM account WHERE id < 10000;")
 
     if [[ -z "$max_id" || "$max_id" == "NULL" ]]; then
         echo "1"
@@ -192,7 +160,7 @@ account_id_exists() {
     local account_id="$1"
     local count
 
-    count=$(mysql_exec -N -s -e "SELECT COUNT(*) FROM account WHERE id=$account_id;")
+    count=$(mysql_auth -N -s -e "SELECT COUNT(*) FROM account WHERE id=$account_id;")
     [ "$count" -gt 0 ]
 }
 
@@ -202,7 +170,7 @@ account_name_exists() {
     local count
 
     account_name_escaped=$(escape_sql "$account_name")
-    count=$(mysql_exec -N -s -e "SELECT COUNT(*) FROM account WHERE username='$account_name_escaped';")
+    count=$(mysql_auth -N -s -e "SELECT COUNT(*) FROM account WHERE username='$account_name_escaped';")
 
     [ "$count" -gt 0 ]
 }
@@ -317,7 +285,7 @@ VALUES
     ($acc_id, '$acc_name_esc', UNHEX('$final_salt'), UNHEX('$final_verifier'), $expansion);
 "
 
-    if mysql_exec -e "$sql_query"; then
+    if mysql_auth -e "$sql_query"; then
         echo ""
         echo -e "${GREEN}✅ Account created successfully:${NC} $acc_name"
         echo -e "${GREEN}🆔 Account ID:${NC} $acc_id"
@@ -409,7 +377,7 @@ change_password() {
         return
     fi
 
-    if mysql_exec -e "
+    if mysql_auth -e "
         UPDATE account
         SET salt=UNHEX('$final_salt'),
             verifier=UNHEX('$final_verifier'),
@@ -435,7 +403,7 @@ change_expansion() {
         return
     fi
 
-    if mysql_exec -e "
+    if mysql_auth -e "
         UPDATE account
         SET expansion=$new_exp
         WHERE id=$EDIT_ACCOUNT_ID;
@@ -461,7 +429,7 @@ change_username() {
     new_name=$(echo "$new_name" | tr '[:lower:]' '[:upper:]' | xargs)
     new_name_escaped=$(escape_sql "$new_name")
 
-    name_exists=$(mysql_exec -N -s -e "
+    name_exists=$(mysql_auth -N -s -e "
         SELECT COUNT(*)
         FROM account
         WHERE username='$new_name_escaped'
@@ -484,7 +452,7 @@ change_username() {
         return
     fi
 
-    if mysql_exec -e "
+    if mysql_auth -e "
         UPDATE account
         SET username='$new_name_escaped'
         WHERE id=$EDIT_ACCOUNT_ID;
@@ -576,7 +544,7 @@ show_account_gm_status() {
     local account_id="$1"
     local result
 
-    result=$(mysql_exec --batch --skip-column-names -e "
+    result=$(mysql_auth --batch --skip-column-names -e "
         SELECT
             aa.RealmID,
             CASE
@@ -611,7 +579,7 @@ show_realm_selection() {
     echo -e "${CYAN}Realm selection:${NC}"
     echo -e "${GREEN}[-1]${NC} All realms"
 
-    realm_list=$(mysql_exec --batch --skip-column-names -e "
+    realm_list=$(mysql_auth --batch --skip-column-names -e "
         SELECT id, name
         FROM realmlist
         ORDER BY id ASC;
@@ -632,7 +600,7 @@ realm_exists() {
         return 0
     fi
 
-    count=$(mysql_exec -N -s -e "
+    count=$(mysql_auth -N -s -e "
         SELECT COUNT(*)
         FROM realmlist
         WHERE id=$realm_id;
@@ -664,7 +632,7 @@ set_gm_level() {
         "
     fi
 
-    mysql_exec -e "$sql"
+    mysql_auth -e "$sql"
 }
 
 set_gm_level_flow() {
@@ -750,7 +718,7 @@ set_gm_level_flow() {
     if [ "$realm_id" = "-1" ]; then
         realm_label="All realms"
     else
-        realm_label=$(mysql_exec -N -s -e "SELECT name FROM realmlist WHERE id=$realm_id LIMIT 1;")
+        realm_label=$(mysql_auth -N -s -e "SELECT name FROM realmlist WHERE id=$realm_id LIMIT 1;")
     fi
 
     echo ""
@@ -815,7 +783,7 @@ show_account_flow() {
         where="username='$up'"
     fi
 
-    row=$(mysql_exec --batch --skip-column-names -e "
+    row=$(mysql_auth --batch --skip-column-names -e "
         SELECT id, username, email, reg_mail, joindate, last_login, last_ip,
                failed_logins, locked, lock_country, online, expansion,
                mutetime, mutereason, totaltime
@@ -868,7 +836,7 @@ show_account_flow() {
     show_account_gm_status "$id"
     echo -e "${CYAN}==================================================${NC}"
 
-    ban=$(mysql_exec --batch --skip-column-names -e "
+    ban=$(mysql_auth --batch --skip-column-names -e "
         SELECT bandate, unbandate, banreason, bannedby, active
         FROM account_banned
         WHERE id=$id
@@ -923,7 +891,7 @@ delete_account_flow() {
         return 0
     fi
 
-    if mysql_exec -e "DELETE FROM account WHERE id=$account_id; DELETE FROM account_access WHERE id=$account_id;"; then
+    if mysql_auth -e "DELETE FROM account WHERE id=$account_id; DELETE FROM account_access WHERE id=$account_id;"; then
         echo -e "${GREEN}✅ Account deleted:${NC} [$account_id] $account_name"
     else
         echo -e "${RED}❌ Failed to delete account.${NC}"
@@ -933,8 +901,8 @@ delete_account_flow() {
 
 # --------------------------------------------------
 # Account AUTO_INCREMENT (folded in from InnControl
-# scripts/auth/09_db_autoincrement_manager.sh). Reuses this script's
-# DB_* / mysql_exec / read_login_db_info; errors return, never exit.
+# scripts/auth/09_db_autoincrement_manager.sh). Uses mysql_auth / DB_* from
+# common-ops.sh; errors return, never exit.
 # --------------------------------------------------
 set_account_auto_increment() {
     local current_max current_auto min_allowed startpoint confirm_low confirm new_auto create_sql extra
@@ -944,24 +912,24 @@ set_account_auto_increment() {
     echo -e "${CYAN}==================================================${NC}"
     echo ""
 
-    if ! mysql_exec -N -s -e "SELECT 1;" >/dev/null 2>&1; then
+    if ! mysql_auth -N -s -e "SELECT 1;" >/dev/null 2>&1; then
         echo -e "${RED}❌ MySQL connection failed:${NC} $DB_NAME @ $DB_HOST:$DB_PORT ($DB_USER)"
         return 1
     fi
 
-    if [ "$(mysql_exec -N -s -e "SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA='$DB_NAME' AND TABLE_NAME='account';" 2>/dev/null)" != "1" ]; then
+    if [ "$(mysql_auth -N -s -e "SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA='$DB_NAME' AND TABLE_NAME='account';" 2>/dev/null)" != "1" ]; then
         echo -e "${RED}❌ Table not found:${NC} $DB_NAME.account"
         return 1
     fi
 
-    extra=$(mysql_exec -N -s -e "SELECT EXTRA FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='$DB_NAME' AND TABLE_NAME='account' AND COLUMN_NAME='id';" 2>/dev/null)
+    extra=$(mysql_auth -N -s -e "SELECT EXTRA FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='$DB_NAME' AND TABLE_NAME='account' AND COLUMN_NAME='id';" 2>/dev/null)
     if [[ "$extra" != *auto_increment* ]]; then
         echo -e "${RED}❌ Column is not AUTO_INCREMENT:${NC} $DB_NAME.account.id"
         return 1
     fi
 
-    current_max=$(mysql_exec -N -s -e "SELECT IFNULL(MAX(\`id\`),0) FROM \`account\`;" 2>/dev/null)
-    create_sql=$(mysql_exec -N -B -e "SHOW CREATE TABLE \`account\`;" 2>/dev/null)
+    current_max=$(mysql_auth -N -s -e "SELECT IFNULL(MAX(\`id\`),0) FROM \`account\`;" 2>/dev/null)
+    create_sql=$(mysql_auth -N -B -e "SHOW CREATE TABLE \`account\`;" 2>/dev/null)
     current_auto=$(echo "$create_sql" | grep -o "AUTO_INCREMENT=[0-9]*" | head -n 1 | cut -d'=' -f2)
     [ -z "$current_max" ] && current_max=0
     [ -z "$current_auto" ] && current_auto=0
@@ -998,12 +966,12 @@ set_account_auto_increment() {
     read -p "❓ Set AUTO_INCREMENT now? (y/n): " confirm
     [[ "$confirm" =~ ^[JjYy]$ ]] || { echo -e "${YELLOW}👋 Operation cancelled.${NC}"; return 0; }
 
-    if ! mysql_exec -e "ALTER TABLE \`$DB_NAME\`.\`account\` AUTO_INCREMENT = $startpoint;"; then
+    if ! mysql_auth -e "ALTER TABLE \`$DB_NAME\`.\`account\` AUTO_INCREMENT = $startpoint;"; then
         echo -e "${RED}❌ Failed to set AUTO_INCREMENT.${NC}"
         return 1
     fi
 
-    new_auto=$(mysql_exec -N -B -e "SHOW CREATE TABLE \`account\`;" 2>/dev/null \
+    new_auto=$(mysql_auth -N -B -e "SHOW CREATE TABLE \`account\`;" 2>/dev/null \
         | grep -o "AUTO_INCREMENT=[0-9]*" | head -n 1 | cut -d'=' -f2)
     echo ""
     echo -e "${GREEN}✅ AUTO_INCREMENT updated.${NC}  ${current_auto} → ${new_auto:-?}  (requested ${startpoint})"
@@ -1150,7 +1118,7 @@ show_realmlist_table() {
     echo -e "${MAGENTA}📊  Realmlist table${NC}"
     echo "--------------------------------------------------------------------------------"
 
-    rows=$(mysql_exec --batch --skip-column-names -e "
+    rows=$(mysql_auth --batch --skip-column-names -e "
         SELECT id, name, address, localAddress, localSubnetMask, port, icon, flag, timezone, allowedSecurityLevel, gamebuild
         FROM realmlist
         ORDER BY id;
@@ -1186,7 +1154,7 @@ show_realmlist_table_with_status() {
     echo -e "${MAGENTA}📊  Realmlist table${NC}"
     echo "--------------------------------------------------------------------------------------------"
 
-    rows=$(mysql_exec --batch --skip-column-names -e "
+    rows=$(mysql_auth --batch --skip-column-names -e "
         SELECT id, name, address, localAddress, localSubnetMask, port, icon, flag, timezone, allowedSecurityLevel, gamebuild
         FROM realmlist
         ORDER BY id;
@@ -1224,7 +1192,7 @@ show_realmlist_table_with_status() {
 
 get_next_realm_id() {
     local max_id
-    max_id=$(mysql_exec -N -s -e "SELECT IFNULL(MAX(id),0) FROM realmlist;")
+    max_id=$(mysql_auth -N -s -e "SELECT IFNULL(MAX(id),0) FROM realmlist;")
     echo $((max_id + 1))
 }
 
@@ -1268,7 +1236,7 @@ add_or_update_realm() {
     realm_id=${realm_id:-$next_id}
     validate_number "$realm_id" "Realm ID"
 
-    existing_row=$(mysql_exec --batch --skip-column-names -e "
+    existing_row=$(mysql_auth --batch --skip-column-names -e "
         SELECT name, address, localAddress, localSubnetMask, port, icon, flag, timezone, allowedSecurityLevel, gamebuild
         FROM realmlist
         WHERE id=$realm_id
@@ -1396,7 +1364,7 @@ add_or_update_realm() {
             gamebuild=$build;
     "
 
-    if mysql_exec -e "$sql_query"; then
+    if mysql_auth -e "$sql_query"; then
         echo -e "${GREEN}✅ Realm was added or updated successfully.${NC}"
         test_realm_port "$address" "$port"
     else
@@ -1416,7 +1384,7 @@ delete_realm() {
 
     validate_number "$delete_id" "Realm ID"
 
-    realm_name=$(mysql_exec -N -s -e "SELECT name FROM realmlist WHERE id=$delete_id LIMIT 1;")
+    realm_name=$(mysql_auth -N -s -e "SELECT name FROM realmlist WHERE id=$delete_id LIMIT 1;")
 
     if [ -z "$realm_name" ]; then
         echo -e "${RED}❌ No realm found with ID:${NC} $delete_id"
@@ -1432,8 +1400,8 @@ delete_realm() {
         return
     fi
 
-    if mysql_exec -e "DELETE FROM realmlist WHERE id=$delete_id;"; then
-        mysql_exec -e "DELETE FROM motd WHERE realmid=$delete_id;" 2>/dev/null
+    if mysql_auth -e "DELETE FROM realmlist WHERE id=$delete_id;"; then
+        mysql_auth -e "DELETE FROM motd WHERE realmid=$delete_id;" 2>/dev/null
         echo -e "${GREEN}✅ Realm deleted from realmlist:${NC} [$delete_id] $realm_name"
     else
         echo -e "${RED}❌ Failed to delete realm from realmlist.${NC}"
@@ -1497,12 +1465,12 @@ realmlist_menu() {
 # ==================================================
 
 ensure_motd_table() {
-    if ! mysql_exec -N -s -e "SHOW TABLES LIKE 'motd';" | grep -q "^motd$"; then
+    if ! mysql_auth -N -s -e "SHOW TABLES LIKE 'motd';" | grep -q "^motd$"; then
         echo -e "${YELLOW}⚠️  Table 'motd' does not exist.${NC}"
         read -p "❓ Create table now? (y/n): " CONFIRM
 
         if [[ "$CONFIRM" =~ ^[JjYy]$ ]]; then
-            if mysql_exec -e "
+            if mysql_auth -e "
                 CREATE TABLE motd (
                     realmid INT NOT NULL,
                     text LONGTEXT NULL,
@@ -1529,7 +1497,7 @@ show_realms_compact() {
     printf " %-6s %-22s %-22s %-6s\n" "ID" "Name" "Address" "Port"
     echo "--------------------------------------------------"
 
-    mysql_exec --batch --skip-column-names -e "
+    mysql_auth --batch --skip-column-names -e "
         SELECT id, name, address, port
         FROM realmlist
         ORDER BY id ASC;
@@ -1551,7 +1519,7 @@ list_motds() {
     echo -e "${CYAN}==================================================${NC}"
     echo ""
 
-    result=$(mysql_exec --batch --skip-column-names -e "
+    result=$(mysql_auth --batch --skip-column-names -e "
         SELECT
             m.realmid,
             IFNULL(r.name, 'All realms'),
@@ -1587,7 +1555,7 @@ validate_realm_id() {
     fi
 
     if [ "$realm_id" != "-1" ] && [ "$realm_id" != "0" ]; then
-        realm_exists=$(mysql_exec -N -s -e "SELECT COUNT(*) FROM realmlist WHERE id=$realm_id;")
+        realm_exists=$(mysql_auth -N -s -e "SELECT COUNT(*) FROM realmlist WHERE id=$realm_id;")
 
         if [ "$realm_exists" -eq 0 ]; then
             echo -e "${RED}❌ Realm ID does not exist:${NC} $realm_id"
@@ -1601,7 +1569,7 @@ validate_realm_id() {
 get_current_motd() {
     local realm_id="$1"
 
-    mysql_exec -N -s -e "
+    mysql_auth -N -s -e "
         SELECT IFNULL(text, '')
         FROM motd
         WHERE realmid=$realm_id
@@ -1650,7 +1618,7 @@ save_motd() {
 
     motd_escaped=$(escape_sql "$motd_text")
 
-    if mysql_exec -e "
+    if mysql_auth -e "
         INSERT INTO motd (realmid, text)
         VALUES ($realm_id, '$motd_escaped')
         ON DUPLICATE KEY UPDATE text='$motd_escaped';
@@ -1771,7 +1739,7 @@ delete_motd() {
         return
     fi
 
-    motd_exists=$(mysql_exec -N -s -e "SELECT COUNT(*) FROM motd WHERE realmid=$realm_id;")
+    motd_exists=$(mysql_auth -N -s -e "SELECT COUNT(*) FROM motd WHERE realmid=$realm_id;")
 
     if [ "$motd_exists" -eq 0 ]; then
         echo -e "${YELLOW}ℹ️  No MOTD entry found for realm ID:${NC} $realm_id"
@@ -1787,7 +1755,7 @@ delete_motd() {
         return
     fi
 
-    if mysql_exec -e "DELETE FROM motd WHERE realmid=$realm_id;"; then
+    if mysql_auth -e "DELETE FROM motd WHERE realmid=$realm_id;"; then
         echo -e "${GREEN}✅ MOTD deleted successfully.${NC}"
     else
         echo -e "${RED}❌ Failed to delete MOTD.${NC}"
@@ -1888,7 +1856,7 @@ done
 # Entry point
 # ==================================================
 
-if ! read_login_db_info; then
+if ! read_login_database; then
     echo -e "${RED}❌ Could not read LoginDatabaseInfo from authserver.conf.${NC}"
     echo "   $AUTH_CONF"
     exit 1
