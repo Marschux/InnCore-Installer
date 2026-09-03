@@ -53,12 +53,8 @@ checkout). No argument opens the menu.
 
 ```text
 Control/
-├── common.sh                loader (config, colours) + sources the libs
-├── lib-ui.sh                menu frames, prompts, status rows
-├── lib-server.sh            tmux / process control, start/stop/restart
-├── lib-build.sh             git update, build, clean, script self-update
-├── lib-db.sh                auth-DB access (accounts, RBAC, SRP6)
-├── lib-config.sh            values merge, .conf edit, restart schedule
+├── common.sh                config, colours, UI frames, server control
+├── common-ops.sh            build, auth-DB, values merge, restart schedule
 ├── auth-menu.sh             authmenu
 ├── auth-account-manager.sh  accounts, GM levels, auth.account AUTO_INCREMENT
 ├── auth-realm-manager.sh    realmlist + MOTD

@@ -169,16 +169,14 @@ offer_menu_launch() {
 # gathered up front.
 install_control_role() {
     local role="$1" target="$2" acore="$3" owner="$4"
-    local src="$SCRIPT_DIR/Control" menu conf repo_root f
+    local src="$SCRIPT_DIR/Control" menu conf repo_root
 
     [[ "$target" = /* && "$target" != "/" ]] || { warn "Invalid Control path: $target"; return 1; }
     [[ "$acore"  = /* && "$acore"  != "/" ]] || { warn "Invalid AzerothCore path: $acore"; return 1; }
 
     sudo install -d -o "$owner" -g "$owner" "$target"
-    # common.sh is a loader; lib-*.sh carry the actual functions.
-    for f in "$src"/common.sh "$src"/lib-*.sh; do
-        sudo install -m 0755 "$f" "$target/$(basename "$f")"
-    done
+    sudo install -m 0755 "$src/common.sh" "$target/common.sh"
+    sudo install -m 0755 "$src/common-ops.sh" "$target/common-ops.sh"
 
     if ! sudo -u "$owner" test -r "$src/common.sh"; then
         warn "Warning: $owner cannot read $src (needed by 'Update Control scripts')."
