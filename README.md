@@ -53,8 +53,12 @@ checkout). No argument opens the menu.
 
 ```text
 Control/
-├── common.sh                shared code (status, start/stop, apply_values)
-├── clean-build.sh           wipes the build directory
+├── common.sh                loader (config, colours) + sources the libs
+├── lib-ui.sh                menu frames, prompts, status rows
+├── lib-server.sh            tmux / process control, start/stop/restart
+├── lib-build.sh             git update, build, clean, script self-update
+├── lib-db.sh                auth-DB access (accounts, RBAC, SRP6)
+├── lib-config.sh            values merge, .conf edit, restart schedule
 ├── auth-menu.sh             authmenu
 ├── auth-account-manager.sh  accounts, GM levels, auth.account AUTO_INCREMENT
 ├── auth-realm-manager.sh    realmlist + MOTD
