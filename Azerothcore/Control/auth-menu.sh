@@ -100,7 +100,20 @@ build_menu() {
 
 # Realms registered in acore_auth.realmlist. Silent when the DB is unreachable
 # (not created yet, authserver never started) so the header never breaks.
+# Cached for 15s: the menu repaints on a 60s timeout and after every action, and
+# the realmlist changes rarely - stale-but-instant beats a frozen menu when the
+# DB is slow or down.
 realm_header() {
+    local cache="${TMPDIR:-/tmp}/acore-realmhdr.${CONTROL_TMUX_L:-auth}"
+    if [ -f "$cache" ] && [ "$(( $(date +%s) - $(stat -c %Y "$cache" 2>/dev/null || echo 0) ))" -lt 15 ]; then
+        cat "$cache" 2>/dev/null
+        return 0
+    fi
+    ( _realm_header_query ) > "$cache" 2>/dev/null || true
+    cat "$cache" 2>/dev/null
+}
+
+_realm_header_query() {
     read_login_database >/dev/null 2>&1 || return 0
     local rows id name address port icon flag tz sec
     rows="$(mysql_auth -N -s -e "SELECT id, name, address, port,
