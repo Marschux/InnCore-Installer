@@ -56,8 +56,7 @@ Control/
 ├── common.sh                config, colours, UI frames, server control
 ├── common-ops.sh            build, auth-DB, values merge, restart schedule
 ├── auth-menu.sh             authmenu
-├── auth-account-manager.sh  accounts, GM levels, auth.account AUTO_INCREMENT
-├── auth-realm-manager.sh    realmlist + MOTD
+├── auth-tools.sh            accounts, GM levels, AUTO_INCREMENT, realmlist + MOTD
 ├── world-menu.sh            worldmenu
 ├── world-restart-runner.sh  daily-restart scheduler (systemd service)
 └── values/                  short config summaries you edit in the menu
