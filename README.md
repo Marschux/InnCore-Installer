@@ -53,12 +53,14 @@ checkout). No argument opens the menu.
 
 ```text
 Control/
-├── common.sh        shared code (status, start/stop, apply_values)
-├── auth-menu.sh      authmenu
-├── world-menu.sh     worldmenu
+├── common.sh                shared code (status, start/stop, apply_values)
+├── clean-build.sh           wipes the build directory
+├── auth-menu.sh             authmenu
+├── auth-account-manager.sh  accounts, GM levels, auth.account AUTO_INCREMENT
+├── auth-realm-manager.sh    realmlist + MOTD
+├── world-menu.sh            worldmenu
 ├── world-restart-runner.sh  daily-restart scheduler (systemd service)
-├── clean-build.sh    wipes the build directory
-└── values/           short config summaries you edit in the menu
+└── values/                  short config summaries you edit in the menu
     ├── values_auth.conf
     ├── values_world.conf
     └── values_playerbots.conf

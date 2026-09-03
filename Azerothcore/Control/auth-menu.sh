@@ -33,7 +33,7 @@ restart_auth() { server_restart authserver "$AUTH_ENGINE" "$AUTH_BINARY" "$AUTH_
 autostart_auth() { autostart_toggle "$AUTH_SERVICE_NAME" "AzerothCore Authserver" "$AUTH_MENU"; }
 
 # Account and realm/MOTD management are vendored from InnControl (see
-# account-manager.sh / realm-manager.sh) and keep their exact look and flow.
+# auth-account-manager.sh / auth-realm-manager.sh) and keep their exact look and flow.
 run_manager() {   # run_manager <script-basename>
     clear
     local s="$SCRIPT_DIR/$1"
@@ -46,8 +46,8 @@ run_manager() {   # run_manager <script-basename>
     [ -x "$s" ] || chmod +x "$s" 2>/dev/null
     "$s"
 }
-account_menu() { run_manager account-manager.sh; }
-realm_menu()   { run_manager realm-manager.sh; }
+account_menu() { run_manager auth-account-manager.sh; }
+realm_menu()   { run_manager auth-realm-manager.sh; }
 
 apply_auth_values() {
     apply_values "$SCRIPT_DIR/values/values_auth.conf" "$AUTH_CONF" || return 1

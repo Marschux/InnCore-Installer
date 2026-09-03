@@ -4,7 +4,8 @@
 # AZEROTHCORE AUTHSERVER ACCOUNT MANAGER
 # Add accounts, edit accounts and set GM levels
 # directly in the auth database.
-# (vendored from InnControl scripts/auth/08_account_manager.sh)
+# (vendored from InnControl scripts/auth/08_account_manager.sh;
+#  AUTO_INCREMENT tool folded in from 09_db_autoincrement_manager.sh)
 # ==================================================
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -916,6 +917,88 @@ delete_account_flow() {
     fi
 }
 
+# --------------------------------------------------
+# Account AUTO_INCREMENT (folded in from InnControl
+# scripts/auth/09_db_autoincrement_manager.sh). Reuses this script's
+# DB_* / mysql_exec / read_login_db_info; errors return, never exit.
+# --------------------------------------------------
+set_account_auto_increment() {
+    local current_max current_auto min_allowed startpoint confirm_low confirm new_auto create_sql extra
+
+    echo -e "${CYAN}==================================================${NC}"
+    echo -e "${CYAN}        ACCOUNT AUTO_INCREMENT MANAGER            ${NC}"
+    echo -e "${CYAN}==================================================${NC}"
+    echo ""
+
+    if ! mysql_exec -N -s -e "SELECT 1;" >/dev/null 2>&1; then
+        echo -e "${RED}❌ MySQL connection failed:${NC} $DB_NAME @ $DB_HOST:$DB_PORT ($DB_USER)"
+        return 1
+    fi
+
+    if [ "$(mysql_exec -N -s -e "SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA='$DB_NAME' AND TABLE_NAME='account';" 2>/dev/null)" != "1" ]; then
+        echo -e "${RED}❌ Table not found:${NC} $DB_NAME.account"
+        return 1
+    fi
+
+    extra=$(mysql_exec -N -s -e "SELECT EXTRA FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='$DB_NAME' AND TABLE_NAME='account' AND COLUMN_NAME='id';" 2>/dev/null)
+    if [[ "$extra" != *auto_increment* ]]; then
+        echo -e "${RED}❌ Column is not AUTO_INCREMENT:${NC} $DB_NAME.account.id"
+        return 1
+    fi
+
+    current_max=$(mysql_exec -N -s -e "SELECT IFNULL(MAX(\`id\`),0) FROM \`account\`;" 2>/dev/null)
+    create_sql=$(mysql_exec -N -B -e "SHOW CREATE TABLE \`account\`;" 2>/dev/null)
+    current_auto=$(echo "$create_sql" | grep -o "AUTO_INCREMENT=[0-9]*" | head -n 1 | cut -d'=' -f2)
+    [ -z "$current_max" ] && current_max=0
+    [ -z "$current_auto" ] && current_auto=0
+    min_allowed=$((current_max + 1))
+
+    echo -e "Auth database:            ${GREEN}${DB_NAME}${NC} @ ${DB_HOST}:${DB_PORT}"
+    echo -e "Table:                    ${GREEN}account${NC}"
+    echo -e "ID column:                ${GREEN}id${NC}"
+    echo -e "Highest current ID:       ${GREEN}${current_max}${NC}"
+    echo -e "Current AUTO_INCREMENT:   ${GREEN}${current_auto}${NC}"
+    echo -e "Minimum useful value:     ${GREEN}${min_allowed}${NC}"
+    echo ""
+    echo -e "${YELLOW}💡 Recommended:${NC}"
+    echo "   10000 if you want manually created accounts to stay below 10000"
+    echo "   and automatically created accounts to start at 10000+."
+    echo ""
+
+    read -p "🔹  New account AUTO_INCREMENT value [10000]: " startpoint
+    startpoint="${startpoint:-10000}"
+    if [[ ! "$startpoint" =~ ^[0-9]+$ ]] || [ "$startpoint" -lt 1 ]; then
+        echo -e "${RED}❌ Invalid value:${NC} $startpoint"
+        return 1
+    fi
+
+    if [ "$startpoint" -lt "$min_allowed" ]; then
+        echo ""
+        echo -e "${YELLOW}⚠️  Value is below MAX(id)+1 - MySQL will use at least ${min_allowed}.${NC}"
+        read -p "❓ Continue anyway? (y/n): " confirm_low
+        [[ "$confirm_low" =~ ^[JjYy]$ ]] || { echo -e "${YELLOW}👋 Operation cancelled.${NC}"; return 0; }
+    fi
+
+    echo ""
+    echo "SQL:  ALTER TABLE \`$DB_NAME\`.\`account\` AUTO_INCREMENT = $startpoint;"
+    read -p "❓ Set AUTO_INCREMENT now? (y/n): " confirm
+    [[ "$confirm" =~ ^[JjYy]$ ]] || { echo -e "${YELLOW}👋 Operation cancelled.${NC}"; return 0; }
+
+    if ! mysql_exec -e "ALTER TABLE \`$DB_NAME\`.\`account\` AUTO_INCREMENT = $startpoint;"; then
+        echo -e "${RED}❌ Failed to set AUTO_INCREMENT.${NC}"
+        return 1
+    fi
+
+    new_auto=$(mysql_exec -N -B -e "SHOW CREATE TABLE \`account\`;" 2>/dev/null \
+        | grep -o "AUTO_INCREMENT=[0-9]*" | head -n 1 | cut -d'=' -f2)
+    echo ""
+    echo -e "${GREEN}✅ AUTO_INCREMENT updated.${NC}  ${current_auto} → ${new_auto:-?}  (requested ${startpoint})"
+    if [ -n "$new_auto" ] && [ "$new_auto" -lt "$startpoint" ]; then
+        echo -e "${YELLOW}⚠️  Reported value is lower than requested - check with:${NC}"
+        echo "   SHOW CREATE TABLE \`$DB_NAME\`.\`account\`\\G"
+    fi
+}
+
 # ==================================================
 # Top-level menu
 # ==================================================
@@ -977,7 +1060,7 @@ while true; do
 
         5)
             clear
-            "$SCRIPT_DIR/db-autoincrement.sh"
+            set_account_auto_increment
             pause_menu
             ;;
 
