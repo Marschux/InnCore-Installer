@@ -4,13 +4,6 @@
 
 (nichts)
 
-## Verworfen (nicht machen)
-
-- `show_auth_status` -> `status_dot`: ändert Optik von vendored Code für ~15 Z., lohnt nicht
-- `validate_number` `exit 1` mitten im Flow -> `return 1`: 1:1 InnControl, niedrige Prio
-- Playerbots-Guard voll-automatisch (DB-Vorabanlegen + wait-for-ready + Auto-Restore):
-  zu viel Code, cap-and-tell reicht
-
 
 # -------------------------------------------------------- #
 #                        Erledigt                          #
