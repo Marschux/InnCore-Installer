@@ -2,40 +2,24 @@
 #                         Offen                            #
 # -------------------------------------------------------- #
 
-## Control-Umbau: Bench-Verifikation + Push (nächste Session)
+## Control-Umbau: Push (nächste Session)
 
-8 ungepushte Commits (e531d08 .. HEAD, plus Todo-Commit 1055a70).
-Alles nur `bash -n` / `declare -F`-Diff geprüft, NICHTS auf der Bench gelaufen.
-Erst benchen, dann pushen.
+8 ungepushte Commits (e531d08 .. HEAD). Bench-Verifikation auf testbench_1
+durch (2026-09-04), siehe Erledigt. Nur noch:
 
-Auf testbench_2, frische Auth- + World-Installation (oder `*menu update` auf
-bestehender):
-
-- [ ] `authmenu` startet, Status-Screen rendert (common.sh -> common-ops.sh Kette),
-      Branch-Zeile, `realm_header` (15s-Cache - 2x hintereinander öffnen, 2. sofort da)
-- [ ] `authmenu` -> [8] Account management (== `auth-tools.sh accounts`):
-      Show / Add / Edit (pw+expansion+username) / Set GM level / AUTO_INCREMENT / Delete
-- [ ] `authmenu` -> [9] Realm management (== `auth-tools.sh realms`):
-      [1] Realmlist add-or-update / delete / show-with-status
-      [2] MOTD list / edit (nano UND manual) / delete
-- [ ] auth-tools.sh nutzt jetzt `mysql_auth` / `read_login_database` aus common-ops.sh
-      statt eigenem mysql_exec -> DB-Zugriff testen, Header-Zeilen "$DB_NAME @ host:port"
-      müssen befüllt sein (Globals werden beim Start gesetzt)
-- [ ] `authmenu` / `worldmenu` -> Build tools -> Clean build directory
-      (neuer `clean_build` in common-ops.sh, aus clean-build.sh gefoldet) - "type CLEAN"
-- [ ] `worldmenu` -> Daily restart scheduler enable/disable, `world-restart-runner.sh`
-      startet (sourcet common.sh -> alle Libs)
-- [ ] `authmenu update` aus älterem Checkout-Stand: neue Dateien kommen an, Menü
-      re-exect sauber. Alte Dateien bleiben als toter Clutter liegen (ok):
-      auth-account-manager.sh, auth-realm-manager.sh, db-autoincrement.sh,
-      clean-build.sh, lib-ui/server/build/db/config.sh
-- [ ] Datei-Sortierung: `ls Azerothcore/Control/*.sh` -> auth-menu.sh vor auth-tools.sh
-- [ ] Wenn alles grün: `git push`
+- [ ] `git push` (nach ausdrücklicher Ansage)
 
 ## Optional / danach
 
-- [ ] `acore-install.sh` auditieren (im Control-Umbau nicht angefasst, kein akuter
-      Schmerz - nur wenn Lust)
+- [ ] `acore-install.sh` auditieren - beim Bench-Lauf aufgefallen: das Script
+      schreibt das abgefragte acore-DB-Passwort NIE in authserver.conf /
+      worldserver.conf (die bleiben auf `.dist`-Default `acore;acore`), obwohl
+      setup_database den MySQL-User mit dem echten PW anlegt. Frische Installation
+      kann sich so nie an die DB verbinden bis man die confs von Hand editiert
+      oder "apply values" fährt. Nicht im Control-Umbau, aber echter Bug.
+- [ ] worldserver wurde nicht gestartet (acore_world/-characters-Import gespart,
+      ~10 min). server_start/-stop-Pfad ist geteilt und wurde über den
+      authserver live getestet; reiner worldserver-Start bleibt ungetestet.
 
 ## Verworfen (nicht machen)
 
@@ -73,3 +57,36 @@ world-menu.sh, world-restart-runner.sh, values/
 
 InnControl-1:1-Diffbarkeit für die vendored Skripte ist damit weg - bewusst,
 siehe Memory (User bevorzugt Konsolidierung).
+
+## 2026-09-04 - Bench-Verifikation auf testbench_1 (voller Menü-4-Lauf)
+
+testbench_1 frisch zurückgesetzt (Disk auf 100G), Menü 1 + 4 (Bothserver)
+komplett durch: Auth + World (Playerbot-Branch) gebaut, Client-Data geladen,
+Control (both) installiert. acore-DB-PW von Hand auf conf-Default `acore`
+gesetzt (s.o. acore-install.sh-Bug). authserver einmal gestartet -> acore_auth
+angelegt. Alles über die Menüs per tmux getrieben:
+
+- [x] authmenu Status-Screen (common.sh->common-ops.sh), Branch-Zeile `master`
+- [x] realm_header 15s-Cache: sofort-Repaint = mtime unverändert (Cache-Hit),
+      nach 16s = neu geschrieben
+- [x] Account mgmt: Add (SRP6/python3 + DB-Insert), Show, Edit (pw/expansion/
+      username inkl. Pflicht-PW-Reset), Set GM level (account_access), AUTO_INCREMENT
+      (2->10000), Delete (account + account_access weg) - alle gegen DB geprüft
+- [x] Realm mgmt: realmlist add/update (id 2), show-with-status, delete;
+      MOTD manual + nano edit + list + delete - alle gegen `motd`/`realmlist` geprüft
+- [x] Header-Zeilen "acore_auth @ 127.0.0.1:3306" befüllt (read_login_database beim
+      Entry-Point). worldmenu [11] Delete account: WORLD_CONF-Fallback greift,
+      kein `set -u`-Tod
+- [x] clean_build "CLEAN" in authmenu (11->0) UND worldmenu (21G->0), Source bleibt
+- [x] worldmenu Daily restart: enable -> `azerothcore-world-restart.service` läuft,
+      world-restart-runner.sh sourcet common.sh sauber, loggt "Next restart at 04:00";
+      disable -> inactive
+- [x] Update Control scripts (in-menu): CONTROL_SOURCE_DIR auf non-git /opt/ctl-src
+      mit neuer Datei + künstlich veralteter auth-menu.sh -> neue Datei kommt an,
+      alte überschrieben, Re-exec sauber. `worldmenu update` von CLI ebenso.
+      Readability-Guard (Source in 700-Home) meldet sauber statt Crash
+- [x] Datei-Sortierung: `ls Control/*.sh` -> auth-menu.sh vor auth-tools.sh
+
+Bench danach: authserver gestoppt (sauber, Queue drained), restart-service
+gestoppt, alle tmux-Sockets gekillt, control.conf zurückgesetzt, /opt/ctl-src weg.
+MySQL läuft noch. Wartet auf Snapshot-Rollback. Push noch offen.
