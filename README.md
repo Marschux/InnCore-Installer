@@ -91,11 +91,17 @@ config.
    `PlayerbotsDatabaseInfo` in `values_playerbots.conf`. Replace the `password`
    placeholder — applying an unedited summary is now skipped with a warning. If
    Auth and World are on different machines, `LoginDatabaseInfo` is not
-   `127.0.0.1`.
+   `127.0.0.1`. Leave `AiPlayerbot.Min/MaxRandomBots` small until the server has
+   booted once, then raise it in steps (a few hundred at a time, restart in
+   between) — every increase generates the new bot characters at that boot.
 2. `Start server`, then `World console` → confirm creating `acore_world`,
    `acore_characters` and `acore_playerbots`.
-3. The first start can hang at `Waiting for N characters loading into database`
-   (a known Playerbots issue, load-dependent). If it does: leave the console,
-   `Kill server` (type `KILL`), then `Start server` again — the second start
-   finishes normally.
+3. mod-playerbots builds its whole bot-character pool synchronously during the
+   first world init, and at a high `MaxRandomBots` that reliably hangs at
+   `Waiting for N characters loading into database`. `Start server` detects a
+   cold pool and offers to cap `Min/MaxRandomBots` at 50 for the first boot —
+   say yes; raise it again once the server is up. If you already raised the
+   count and a start hangs: leave the console, `Kill server` (type `KILL`),
+   lower `AiPlayerbot.MaxRandomBots`, then `Start server` again — a plain
+   kill+restart at the high count runs into the same wall.
 4. Optional: `Autostart` and the `Daily restart timer`.

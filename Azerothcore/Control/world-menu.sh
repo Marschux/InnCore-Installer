@@ -23,12 +23,47 @@ RESTART_RUNNER="$SCRIPT_DIR/world-restart-runner.sh"
 
 update_control() { update_control_scripts world-menu.sh; }
 
-start_world()   { server_start worldserver "$WORLD_ENGINE" "$WORLD_BINARY" "$WORLD_CONF" "$WORLD_SESSION"; }
+# mod-playerbots generates its entire random-bot character pool synchronously
+# during world init. At the shipped counts (values_playerbots.conf, or even the
+# upstream .dist default) the first start on a fresh DB reliably stalls at
+# "Waiting for N characters loading into database". While the pool is still cold,
+# cap Min/MaxRandomBots so the first boot is quick; the operator grows it
+# afterwards via Config -> apply values_playerbots.conf.
+PLAYERBOTS_FIRST_START_CAP=50
+playerbots_first_start_guard() {
+    [ -f "$PLAYERBOTS_CONF" ] || return 0
+    local maxbots pool
+    maxbots="$(grep -E '^[[:space:]]*AiPlayerbot\.MaxRandomBots[[:space:]]*=' "$PLAYERBOTS_CONF" \
+              | tail -1 | grep -oE '[0-9]+' | head -1)"
+    [ -n "$maxbots" ] && [ "$maxbots" -gt "$PLAYERBOTS_FIRST_START_CAP" ] || return 0
+    # Bot characters land in the character DB; cross-DB count via the auth
+    # connection (the acore user has global privileges). A failed query (DB not
+    # created yet, or auth on another host) yields "" and is treated as cold.
+    pool="$(mysql_auth -N -s -e 'SELECT COUNT(*) FROM acore_characters.characters' 2>/dev/null)"
+    [ -z "$pool" ] || [ "$pool" -lt "$PLAYERBOTS_FIRST_START_CAP" ] || return 0
+
+    echo -e "${YELLOW}Playerbots pool is still empty and AiPlayerbot.MaxRandomBots = $maxbots.${RESET}"
+    echo "Generating that many bot characters during the first world init can hang"
+    echo "the server on \"Waiting for N characters loading into database\"."
+    read -rp "Cap Min/MaxRandomBots at $PLAYERBOTS_FIRST_START_CAP for a safe first start? [Y/n]: " a
+    case "$a" in n|N|no|NO) echo "Left playerbots.conf unchanged."; return 0 ;; esac
+    sed -i -E "s/^([[:space:]]*AiPlayerbot\.(Min|Max)RandomBots[[:space:]]*=[[:space:]]*)[0-9]+/\1$PLAYERBOTS_FIRST_START_CAP/" \
+        "$PLAYERBOTS_CONF"
+    echo -e "${GREEN}Set Min/MaxRandomBots = $PLAYERBOTS_FIRST_START_CAP in playerbots.conf.${RESET}"
+    echo "Once the server is up, raise it via Config -> edit + apply"
+    echo "values_playerbots.conf (grow in steps of a few hundred, restart between)."
+}
+
+start_world() {
+    playerbots_first_start_guard
+    server_start worldserver "$WORLD_ENGINE" "$WORLD_BINARY" "$WORLD_CONF" "$WORLD_SESSION"
+}
 stop_world()    { server_stop worldserver "$WORLD_SESSION" "server shutdown 30" 180; }
 kill_world() {
     echo -e "${RED}Force-kill discards every character save still queued.${RESET}"
     echo "Use [3] Stop unless the server is genuinely stuck (e.g. hangs on"
     echo "\"Waiting for N characters loading into database\" on a first start)."
+    echo "After killing such a hang, lower AiPlayerbot.MaxRandomBots before restarting."
     read -rp "Type KILL to confirm: " c
     if [ "$c" = KILL ]; then
         server_kill worldserver "$WORLD_SESSION"
