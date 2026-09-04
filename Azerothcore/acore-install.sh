@@ -509,12 +509,32 @@ collect_database_password() {
     while true; do
         read -rsp "Password for the MySQL user 'acore': " DB_PASS
         echo ""
+        # AzerothCore's *DatabaseInfo is a ';'-delimited list inside a '"' pair;
+        # a password containing any of ; " ' can't be represented there (and
+        # would break the SQL below). Reject early instead of a confusing fail.
+        case "$DB_PASS" in
+            '') warn "Password must not be empty."; continue ;;
+            *[\;\"\']*) warn "Password must not contain  ;  \"  or  '  characters."; continue ;;
+        esac
         read -rsp "Repeat password: " DB_PASS_CONFIRM
         echo ""
         [ "$DB_PASS" = "$DB_PASS_CONFIRM" ] && break
         warn "Passwords do not match. Please try again."
     done
     unset DB_PASS_CONFIRM
+}
+
+# The shipped *.conf.dist carry a literal "acore" as the password in every
+# *DatabaseInfo line ("host;port;user;PASS;db"). Copying the dist file verbatim
+# (steps 7/8 below) leaves auth/worldserver unable to connect once the operator
+# picks any other password. Rewrite field 4 of each DatabaseInfo line - the '^'
+# anchor skips the commented example lines, [A-Za-z]*DatabaseInfo covers
+# Login/World/Character.
+write_conf_db_password() {   # write_conf_db_password <conf-file>
+    local conf="$1" d=$'\x1f' esc
+    [ -f "$conf" ] || return 0
+    esc="$(printf '%s' "$DB_PASS" | sed "s/[&${d}\\]/\\\\&/g")"
+    sed -i -E "s${d}^([[:space:]]*[A-Za-z]*DatabaseInfo[[:space:]]*=[[:space:]]*\"[^\";]*;[^\";]*;[^\";]*;)[^\";]*${d}\\1${esc}${d}" "$conf"
 }
 
 setup_database() {
@@ -700,6 +720,7 @@ run_authserver() {
 
     step "7. Folder structure and config files"
     cp "$AUTH_DIR/env/dist/etc/authserver.conf.dist" "$AUTH_DIR/env/dist/etc/authserver.conf"
+    write_conf_db_password "$AUTH_DIR/env/dist/etc/authserver.conf"
     echo "authserver.conf created: $AUTH_DIR/env/dist/etc/authserver.conf"
 
     # The clone/build ran as whoever started acore-install.sh (root on a fresh LXC),
@@ -764,6 +785,7 @@ run_worldserver() {
 
     step "8. Folder structure and config files"
     cp "$WORLD_DIR/env/dist/etc/worldserver.conf.dist" "$WORLD_DIR/env/dist/etc/worldserver.conf"
+    write_conf_db_password "$WORLD_DIR/env/dist/etc/worldserver.conf"
     echo -e "\nAllowTwoSide.WhoList = 1" >> "$WORLD_DIR/env/dist/etc/worldserver.conf"
     cp "$WORLD_DIR/env/dist/etc/modules/playerbots.conf.dist" "$WORLD_DIR/env/dist/etc/modules/playerbots.conf"
     echo "worldserver.conf and playerbots.conf created."

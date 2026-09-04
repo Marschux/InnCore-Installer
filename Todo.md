@@ -11,15 +11,13 @@ durch (2026-09-04), siehe Erledigt. Nur noch:
 
 ## Optional / danach
 
-- [ ] `acore-install.sh` auditieren - beim Bench-Lauf aufgefallen: das Script
-      schreibt das abgefragte acore-DB-Passwort NIE in authserver.conf /
-      worldserver.conf (die bleiben auf `.dist`-Default `acore;acore`), obwohl
-      setup_database den MySQL-User mit dem echten PW anlegt. Frische Installation
-      kann sich so nie an die DB verbinden bis man die confs von Hand editiert
-      oder "apply values" fährt. Nicht im Control-Umbau, aber echter Bug.
 - [ ] worldserver wurde nicht gestartet (acore_world/-characters-Import gespart,
       ~10 min). server_start/-stop-Pfad ist geteilt und wurde über den
       authserver live getestet; reiner worldserver-Start bleibt ungetestet.
+
+## Erledigt hier noch offen: push
+
+- [ ] `git push` für den acore-install.sh-DB-Passwort-Fix (s. Erledigt 2026-09-04 (2))
 
 ## Verworfen (nicht machen)
 
@@ -89,4 +87,18 @@ angelegt. Alles über die Menüs per tmux getrieben:
 
 Bench danach: authserver gestoppt (sauber, Queue drained), restart-service
 gestoppt, alle tmux-Sockets gekillt, control.conf zurückgesetzt, /opt/ctl-src weg.
-MySQL läuft noch. Wartet auf Snapshot-Rollback. Push noch offen.
+MySQL läuft noch. Wartet auf Snapshot-Rollback.
+
+Gepusht: master @ e114c04.
+
+## 2026-09-04 (2) - acore-install.sh DB-Passwort-Fix
+
+`write_conf_db_password()`: nach `cp *.conf.dist *.conf` wird Feld 4 (Passwort)
+jeder aktiven `*DatabaseInfo`-Zeile per sed auf `$DB_PASS` gesetzt (Login in
+authserver.conf; Login/World/Character in worldserver.conf). Kommentierte
+Beispielzeilen (`^#`) bleiben unangetastet. sed-Delimiter `\x1f` +
+`&\`-Escaping wie in common-ops.sh apply_values.
+`collect_database_password()`: lehnt jetzt leere PW und die Zeichen `; " '` ab
+(in AC's `"h;p;u;pw;db"`-Format nicht darstellbar, würden SQL/conf brechen).
+Helper isoliert gegen die echten .dist-confs auf testbench_1 getestet
+(Sonderzeichen `/ & $ \1` bleiben erhalten). Kein voller Re-Install.
