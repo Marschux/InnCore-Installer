@@ -1,0 +1,8 @@
+# Everything installed onto the Debian box must stay LF: a CRLF shebang breaks
+# `#!/usr/bin/env bash`, and CRLF in the values/*.conf templates leaks '\r' into
+# parsed values. Force it regardless of the committer's core.autocrlf.
+*.sh   text eol=lf
+*.conf text eol=lf
+
+# Let git decide for the rest (README, Todo, ...).
+* text=auto

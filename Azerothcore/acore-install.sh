@@ -557,9 +557,16 @@ EOF
     sudo systemctl restart mysql
 
     step "Create databases and MySQL user"
+    # CREATE USER IF NOT EXISTS does NOT touch the password of an existing user,
+    # so a re-run with a different password would leave the account on the old
+    # one while write_conf_db_password() puts the new one into the .conf files -
+    # every DB connection then fails. ALTER USER after the CREATE keeps the
+    # account's password in sync with what the operator just entered.
     sudo mysql -u root << EOF
 CREATE USER IF NOT EXISTS 'acore'@'localhost' IDENTIFIED WITH mysql_native_password BY '$DB_PASS';
 CREATE USER IF NOT EXISTS 'acore'@'%' IDENTIFIED WITH mysql_native_password BY '$DB_PASS';
+ALTER USER 'acore'@'localhost' IDENTIFIED WITH mysql_native_password BY '$DB_PASS';
+ALTER USER 'acore'@'%' IDENTIFIED WITH mysql_native_password BY '$DB_PASS';
 
 GRANT ALL PRIVILEGES ON *.* TO 'acore'@'localhost' WITH GRANT OPTION;
 GRANT ALL PRIVILEGES ON *.* TO 'acore'@'%' WITH GRANT OPTION;

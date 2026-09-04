@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+#
+# Self-check for the daily-restart time maths in common-ops.sh
+# (restart_next / restart_is_skipped). No framework, no network, no server -
+# it only exercises the pure date logic that is otherwise unverifiable without
+# waiting a day for the scheduler to fire. Run: bash test-restart-schedule.sh
+
+set -u
+cd "$(dirname "${BASH_SOURCE[0]}")"
+
+# Point the conf paths at a scratch dir before sourcing (the file reads them at
+# load time), then pull in just the helpers.
+SCRIPT_DIR="$(mktemp -d)"
+trap 'rm -rf "$SCRIPT_DIR"' EXIT
+RESTART_TIMES_CONF="$SCRIPT_DIR/restart_times.conf"
+RESTART_SKIP_CONF="$SCRIPT_DIR/restart_skip.conf"
+# shellcheck source=common-ops.sh
+source ./common-ops.sh
+
+pass=0 fail=0
+chk() { if [ "$2" = "$3" ]; then pass=$((pass + 1)); else fail=$((fail + 1)); echo "FAIL $1: got [$2] want [$3]"; fi; }
+field() { echo "$1" | cut -d';' -f"$2"; }
+
+now="$(date +%s)"; today="$(date +%F)"
+: > "$RESTART_TIMES_CONF"; : > "$RESTART_SKIP_CONF"
+
+# no times configured -> restart_next reports failure
+restart_next >/dev/null; chk "empty -> rc1" "$?" "1"
+
+# a slot later today -> that slot, today
+future="$(date -d "@$((now + 3600))" +%H:%M)"
+echo "$future;15" > "$RESTART_TIMES_CONF"
+out="$(restart_next)"
+chk "future today: time"  "$(field "$out" 2)" "$future"
+chk "future today: lead"  "$(field "$out" 3)" "15"
+chk "future today: epoch" "$(field "$out" 1)" "$(date -d "$today $future" +%s)"
+
+# a slot already past today -> same slot tomorrow
+past="$(date -d "@$((now - 3600))" +%H:%M)"
+echo "$past;10" > "$RESTART_TIMES_CONF"
+chk "past -> tomorrow" "$(field "$(restart_next)" 1)" "$(date -d "tomorrow $past" +%s)"
+
+# several slots -> the soonest future one wins
+t_far="$(date -d "@$((now + 7200))" +%H:%M)"; t_near="$(date -d "@$((now + 1800))" +%H:%M)"
+printf '%s;5\n%s;5\n' "$t_far" "$t_near" > "$RESTART_TIMES_CONF"
+chk "soonest of many" "$(field "$(restart_next)" 2)" "$t_near"
+
+# next occurrence skipped for the whole day -> jump to the day after
+echo "$past;10" > "$RESTART_TIMES_CONF"
+date -d tomorrow +%F > "$RESTART_SKIP_CONF"
+chk "skip whole day" "$(field "$(restart_next)" 1)" "$(date -d "$(date -d '+2 days' +%F) $past" +%s)"
+
+# only that one slot skipped (date;HH:MM) -> same effect here
+printf '%s;%s\n' "$(date -d tomorrow +%F)" "$past" > "$RESTART_SKIP_CONF"
+chk "skip single slot" "$(field "$(restart_next)" 1)" "$(date -d "$(date -d '+2 days' +%F) $past" +%s)"
+
+# restart_is_skipped, direct
+printf '# a comment\n2030-01-01\n2030-02-02;08:00\n' > "$RESTART_SKIP_CONF"
+restart_is_skipped 2030-01-01 05:00; chk "whole day skipped"  "$?" "0"
+restart_is_skipped 2030-02-02 08:00; chk "exact slot skipped" "$?" "0"
+restart_is_skipped 2030-02-02 09:00; chk "other slot ok"      "$?" "1"
+restart_is_skipped 2030-03-03 00:00; chk "date not listed"    "$?" "1"
+
+# malformed lines are ignored, the valid one still wins
+printf 'not-a-time;x\n25:99;5\n%s;5\n' "$past" > "$RESTART_TIMES_CONF"
+: > "$RESTART_SKIP_CONF"
+chk "garbage tolerated" "$(field "$(restart_next)" 2)" "$past"
+
+echo "---"
+echo "pass=$pass fail=$fail"
+[ "$fail" -eq 0 ]

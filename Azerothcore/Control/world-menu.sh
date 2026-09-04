@@ -76,7 +76,7 @@ reload_world()  { server_reload worldserver "$WORLD_SESSION"; }
 
 save_world() {
     if tmx has-session -t "$WORLD_SESSION" 2>/dev/null; then
-        tmx send-keys -t "$WORLD_SESSION" '.server saveall' Enter
+        tmx send-keys -t "$WORLD_SESSION" 'saveall' Enter
         echo "Save command sent to the Worldserver."
     else
         echo "No active Worldserver tmux session found."
