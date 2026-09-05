@@ -285,6 +285,7 @@ render_menu() {
     timer_dot
     echo -e "$(status_row 📂 "Session:")${CYAN}${WORLD_SESSION}${RESET}"
     echo -e "$(status_row 🌿 "Branch:")${CYAN}$(current_branch)${RESET}"
+    control_version_dot
     hr
 
     menu_section "$COLOR_SERVER" "⚙️  SERVER CONTROL"

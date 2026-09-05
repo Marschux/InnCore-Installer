@@ -174,9 +174,21 @@ install_control_role() {
     [[ "$target" = /* && "$target" != "/" ]] || { warn "Invalid Control path: $target"; return 1; }
     [[ "$acore"  = /* && "$acore"  != "/" ]] || { warn "Invalid AzerothCore path: $acore"; return 1; }
 
+    # Password used to patch the values summaries below. On a standalone
+    # install (menu 5) nothing is in memory, so read it back out of the
+    # server's own conf. Shadowed locally so it never leaks past this call.
+    local DB_PASS="${DB_PASS:-}"
+    [ -n "$DB_PASS" ] || DB_PASS="$(sed -nE 's/^[[:space:]]*LoginDatabaseInfo[[:space:]]*=[[:space:]]*"[^";]*;[^";]*;[^";]*;([^";]*);.*/\1/p' \
+        "$acore/env/dist/etc/${role}server.conf" 2>/dev/null | tail -1)"
+    [ -n "$DB_PASS" ] || warn "No DB password found - values_*.conf keep the \"password\" placeholder."
+
     sudo install -d -o "$owner" -g "$owner" "$target"
     sudo install -m 0755 "$src/common.sh" "$target/common.sh"
     sudo install -m 0755 "$src/common-ops.sh" "$target/common-ops.sh"
+    # Commit the menu header reports as the installed Control version.
+    # Owned by $owner: the menu rewrites it on 'Update Control scripts'.
+    git -C "$src" rev-parse --short HEAD 2>/dev/null         | sudo install -m 0644 -o "$owner" -g "$owner" /dev/stdin "$target/.control-commit" || true
+    sudo rm -f "$target/.update-check"
 
     if ! sudo -u "$owner" test -r "$src/common.sh"; then
         warn "Warning: $owner cannot read $src (needed by 'Update Control scripts')."
@@ -210,6 +222,12 @@ EOF
     keep_values() {
         [ -f "$target/values/$1" ] || sudo install -D -o "$owner" -g "$owner" -m 0644 "$src/values/$1" "$target/values/$1"
         sudo install -D -o "$owner" -g "$owner" -m 0644 "$src/values/$1" "$target/values/$1.base"
+        # The templates ship a literal "password" in their *DatabaseInfo lines;
+        # applying such a summary from the menu would overwrite the working
+        # credentials in authserver.conf / worldserver.conf. The .base sidecar
+        # keeps the placeholder on purpose - it is the merge baseline, so the
+        # real password below counts as an operator edit and survives updates.
+        if [ -n "${DB_PASS:-}" ]; then write_conf_db_password "$target/values/$1"; fi
     }
 
     if [ "$role" = auth ]; then
@@ -534,7 +552,7 @@ write_conf_db_password() {   # write_conf_db_password <conf-file>
     local conf="$1" d=$'\x1f' esc
     [ -f "$conf" ] || return 0
     esc="$(printf '%s' "$DB_PASS" | sed "s/[&${d}\\]/\\\\&/g")"
-    sed -i -E "s${d}^([[:space:]]*[A-Za-z]*DatabaseInfo[[:space:]]*=[[:space:]]*\"[^\";]*;[^\";]*;[^\";]*;)[^\";]*${d}\\1${esc}${d}" "$conf"
+    sudo sed -i -E "s${d}^([[:space:]]*[A-Za-z]*DatabaseInfo[[:space:]]*=[[:space:]]*\"[^\";]*;[^\";]*;[^\";]*;)[^\";]*${d}\\1${esc}${d}" "$conf"
 }
 
 setup_database() {

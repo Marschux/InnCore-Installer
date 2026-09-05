@@ -51,6 +51,11 @@ After a build you get `authmenu` and/or `worldmenu`. Start them as root or with
 `status`, and `update` (pull + reinstall the Control scripts from the repo
 checkout). No argument opens the menu.
 
+The header shows the commit the installed Control scripts came from and whether
+the repo has newer ones. The check is a background `git fetch` at most every 6
+hours (`CONTROL_UPDATE_MAX_AGE` in `control.conf`), cached in `.update-check` -
+the menu itself never waits on the network.
+
 ```text
 Control/
 ├── common.sh                config, colours, UI frames, server control
@@ -76,8 +81,9 @@ config.
 
 ### Starting the Authserver the first time
 
-1. `Config` → edit `values_auth.conf`, put the real database password into
-   `LoginDatabaseInfo`, go back, `Apply`, say yes to the restart.
+1. `Config` → check `values_auth.conf` (the installer already wrote the real
+   database password into `LoginDatabaseInfo`), go back, `Apply`, say yes to
+   the restart.
 2. `Auth console` → the server asks whether to create the `acore_auth`
    database, say yes. Wait until it prints "Added realm ...", then press
    `Ctrl-B` then `D` to leave the console.
@@ -86,12 +92,12 @@ config.
 ### Starting the Worldserver the first time
 
 1. `Config` → edit and apply `values_world.conf` and `values_playerbots.conf`.
-   The `*DatabaseInfo` lines need the auth server's address and the real
-   password: three in `values_world.conf` (`Login`/`World`/`Character`) plus
-   `PlayerbotsDatabaseInfo` in `values_playerbots.conf`. Replace the `password`
-   placeholder — applying an unedited summary is now skipped with a warning. If
-   Auth and World are on different machines, `LoginDatabaseInfo` is not
-   `127.0.0.1`. Leave `AiPlayerbot.Min/MaxRandomBots` small until the server has
+   The installer already wrote the real password into every `*DatabaseInfo`
+   line (three in `values_world.conf`, plus `PlayerbotsDatabaseInfo` in
+   `values_playerbots.conf`); applying a summary that still carries the
+   `password` placeholder is skipped with a warning. If Auth and World are on
+   different machines, `LoginDatabaseInfo` still needs the auth server's
+   address instead of `127.0.0.1`. Leave `AiPlayerbot.Min/MaxRandomBots` small until the server has
    booted once, then raise it in steps (a few hundred at a time, restart in
    between) — every increase generates the new bot characters at that boot.
 2. `Start server`, then `World console` → confirm creating `acore_world`,

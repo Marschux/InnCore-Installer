@@ -140,6 +140,58 @@ autostart_dot() {   # autostart_dot <service-name>
     fi
 }
 
+# Header row: which commit the installed Control scripts came from, and whether
+# the repo has newer ones. The fetch runs detached in the background with its
+# result cached in a file - the menu repaints far too often (and on a 60s read
+# timeout) to touch the network from the render path.
+CONTROL_UPDATE_CACHE="${CONTROL_UPDATE_CACHE:-${SCRIPT_DIR:-.}/.update-check}"
+CONTROL_UPDATE_MAX_AGE="${CONTROL_UPDATE_MAX_AGE:-21600}"   # 6h
+
+# Written by update_control_scripts / the installer. Falls back to the source
+# checkout's HEAD, which is the same thing unless someone pulled there by hand.
+control_installed_commit() {
+    local f="${SCRIPT_DIR:-.}/.control-commit"
+    if [ -s "$f" ]; then head -1 "$f"; else
+        gitq "${CONTROL_SOURCE_DIR:-/nonexistent}" rev-parse --short HEAD 2>/dev/null
+    fi
+}
+
+# Cache holds the number of commits between the installed one and origin.
+# Stale (or missing) cache: bump its mtime first so a hanging or failing fetch
+# cannot respawn on every repaint, then let the background job fill it in.
+control_update_refresh() {
+    local src="${CONTROL_SOURCE_DIR:-}" age=0 inst
+    [ -n "$src" ] && [ -d "$src/.git" ] || return 0
+    if [ -f "$CONTROL_UPDATE_CACHE" ]; then
+        age=$(( $(date +%s) - $(stat -c %Y "$CONTROL_UPDATE_CACHE" 2>/dev/null || echo 0) ))
+        [ "$age" -lt "$CONTROL_UPDATE_MAX_AGE" ] && return 0
+    fi
+    touch "$CONTROL_UPDATE_CACHE" 2>/dev/null || return 0
+    inst="$(control_installed_commit)"
+    (
+        b="$(gitq "$src" rev-parse --abbrev-ref HEAD 2>/dev/null)"
+        [ -n "$b" ] && [ "$b" != HEAD ] || exit 0
+        gitq "$src" fetch --quiet --prune origin "$b" || exit 0
+        gitq "$src" rev-list --count "${inst:-HEAD}..origin/$b" > "$CONTROL_UPDATE_CACHE"
+    ) >/dev/null 2>&1 &
+    disown 2>/dev/null || true
+}
+
+control_version_dot() {
+    control_update_refresh
+    local inst n state
+    inst="$(control_installed_commit)"
+    read -r n < "$CONTROL_UPDATE_CACHE" 2>/dev/null || n=""
+    case "$n" in
+        '')          state="${DIM}checking...${RESET}" ;;
+        0)           state="${GREEN}up to date${RESET}" ;;
+        *[!0-9]*)    state="${DIM}unknown${RESET}" ;;
+        1)           state="${YELLOW}update available (1 commit)${RESET}" ;;
+        *)           state="${YELLOW}update available ($n commits)${RESET}" ;;
+    esac
+    echo -e "$(status_row 🧬 "Control:")${CYAN}${inst:-unknown}${RESET}  ${state}"
+}
+
 # --- privilege, git-as-owner, tmux, server process control ----------------
 
 # The AzerothCore source/build trees and the tmux session belong to SERVER_USER.

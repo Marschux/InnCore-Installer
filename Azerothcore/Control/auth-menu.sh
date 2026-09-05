@@ -158,6 +158,7 @@ render_menu() {
     autostart_dot "$AUTH_SERVICE_NAME"
     echo -e "$(status_row 📂 "Session:")${CYAN}${AUTH_SESSION}${RESET}"
     echo -e "$(status_row 🌿 "Branch:")${CYAN}$(current_branch)${RESET}"
+    control_version_dot
     realm_header
     hr
 
