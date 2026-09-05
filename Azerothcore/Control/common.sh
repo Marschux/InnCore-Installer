@@ -169,10 +169,19 @@ control_update_refresh() {
     touch "$CONTROL_UPDATE_CACHE" 2>/dev/null || return 0
     inst="$(control_installed_commit)"
     (
-        b="$(gitq "$src" rev-parse --abbrev-ref HEAD 2>/dev/null)"
-        [ -n "$b" ] && [ "$b" != HEAD ] || exit 0
-        gitq "$src" fetch --quiet --prune origin "$b" || exit 0
-        gitq "$src" rev-list --count "${inst:-HEAD}..origin/$b" > "$CONTROL_UPDATE_CACHE"
+        # No stdin and no credential prompt: a background git that asks for a
+        # password over the terminal gets stopped by SIGTTIN and the header
+        # would sit on "checking..." forever. timeout caps a stalled network.
+        # Always write something, so a failed check reads as "unknown" instead.
+        exec </dev/null
+        export GIT_TERMINAL_PROMPT=0
+        g() { timeout 60 git -C "$src" -c safe.directory='*' "$@"; }
+        b="$(g rev-parse --abbrev-ref HEAD 2>/dev/null)"
+        n=""
+        if [ -n "$b" ] && [ "$b" != HEAD ] && g fetch --quiet --prune origin "$b"; then
+            n="$(g rev-list --count "${inst:-HEAD}..origin/$b" 2>/dev/null)"
+        fi
+        printf '%s\n' "${n:-x}" > "$CONTROL_UPDATE_CACHE"
     ) >/dev/null 2>&1 &
     disown 2>/dev/null || true
 }
