@@ -161,7 +161,10 @@ control_installed_commit() {
 # cannot respawn on every repaint, then let the background job fill it in.
 control_update_refresh() {
     local src="${CONTROL_SOURCE_DIR:-}" age=0 inst
-    [ -n "$src" ] && [ -d "$src/.git" ] || return 0
+    # rev-parse, not [ -d "$src/.git" ]: CONTROL_SOURCE_DIR is the repo's
+    # Control/ subdirectory, so .git lives further up.
+    [ -n "$src" ] || return 0
+    gitq "$src" rev-parse --git-dir >/dev/null 2>&1 || return 0
     if [ -f "$CONTROL_UPDATE_CACHE" ]; then
         age=$(( $(date +%s) - $(stat -c %Y "$CONTROL_UPDATE_CACHE" 2>/dev/null || echo 0) ))
         [ "$age" -lt "$CONTROL_UPDATE_MAX_AGE" ] && return 0
