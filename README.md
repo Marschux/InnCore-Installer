@@ -51,8 +51,8 @@ After a build you get `authmenu` and/or `worldmenu`. Start them as root or with
 `status`, and `update` (pull + reinstall the Control scripts from the repo
 checkout). No argument opens the menu.
 
-The `Branch:` row also shows the AzerothCore checkout's current commit and
-whether origin has newer ones. The check is a background `git fetch` at most
+The `Branch:` row also shows the AzerothCore checkout's current commit, and an
+`Update:` row says how far behind origin it is. The check is a background `git fetch` at most
 every 6 hours (`ACORE_UPDATE_MAX_AGE` in `control.conf`), cached in
 `.update-check` - the menu itself never waits on the network. A failed check
 reads as "update state unknown"; the reason is in `.update-check.log`.

@@ -180,7 +180,7 @@ acore_update_refresh() {
     disown 2>/dev/null || true
 }
 
-# Replaces a plain "Branch:" row: branch, commit, and the cached update state.
+# Two header rows: the checkout's branch + commit, and the cached update state.
 acore_version_dot() {
     acore_update_refresh
     local head n state
@@ -189,11 +189,12 @@ acore_version_dot() {
     case "$n" in
         '')       state="${DIM}checking...${RESET}" ;;
         0)        state="${GREEN}up to date${RESET}" ;;
-        *[!0-9]*) state="${DIM}update state unknown${RESET}" ;;
-        1)        state="${YELLOW}update available (1 commit)${RESET}" ;;
-        *)        state="${YELLOW}update available ($n commits)${RESET}" ;;
+        *[!0-9]*) state="${DIM}unknown - see $(basename "$ACORE_UPDATE_CACHE").log${RESET}" ;;
+        1)        state="${YELLOW}1 commit behind origin${RESET}" ;;
+        *)        state="${YELLOW}$n commits behind origin${RESET}" ;;
     esac
-    echo -e "$(status_row 🌿 "Branch:")${CYAN}$(current_branch)${RESET}  ${DIM}${head:-?}${RESET}  ${state}"
+    echo -e "$(status_row 🌿 "Branch:")${CYAN}$(current_branch)${RESET}  ${DIM}${head:-?}${RESET}"
+    echo -e "$(status_row 🔄 "Update:")${state}"
 }
 
 # --- privilege, git-as-owner, tmux, server process control ----------------
