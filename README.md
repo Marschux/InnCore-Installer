@@ -51,10 +51,11 @@ After a build you get `authmenu` and/or `worldmenu`. Start them as root or with
 `status`, and `update` (pull + reinstall the Control scripts from the repo
 checkout). No argument opens the menu.
 
-The header shows the commit the installed Control scripts came from and whether
-the repo has newer ones. The check is a background `git fetch` at most every 6
-hours (`CONTROL_UPDATE_MAX_AGE` in `control.conf`), cached in `.update-check` -
-the menu itself never waits on the network.
+The `Branch:` row also shows the AzerothCore checkout's current commit and
+whether origin has newer ones. The check is a background `git fetch` at most
+every 6 hours (`ACORE_UPDATE_MAX_AGE` in `control.conf`), cached in
+`.update-check` - the menu itself never waits on the network. A failed check
+reads as "update state unknown"; the reason is in `.update-check.log`.
 
 ```text
 Control/

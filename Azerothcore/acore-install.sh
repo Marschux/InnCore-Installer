@@ -185,10 +185,6 @@ install_control_role() {
     sudo install -d -o "$owner" -g "$owner" "$target"
     sudo install -m 0755 "$src/common.sh" "$target/common.sh"
     sudo install -m 0755 "$src/common-ops.sh" "$target/common-ops.sh"
-    # Commit the menu header reports as the installed Control version.
-    # Owned by $owner: the menu rewrites it on 'Update Control scripts'.
-    git -C "$src" rev-parse --short HEAD 2>/dev/null         | sudo install -m 0644 -o "$owner" -g "$owner" /dev/stdin "$target/.control-commit" || true
-    sudo rm -f "$target/.update-check"
 
     if ! sudo -u "$owner" test -r "$src/common.sh"; then
         warn "Warning: $owner cannot read $src (needed by 'Update Control scripts')."

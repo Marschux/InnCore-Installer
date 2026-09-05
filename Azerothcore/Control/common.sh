@@ -140,39 +140,27 @@ autostart_dot() {   # autostart_dot <service-name>
     fi
 }
 
-# Header row: which commit the installed Control scripts came from, and whether
-# the repo has newer ones. The fetch runs detached in the background with its
-# result cached in a file - the menu repaints far too often (and on a 60s read
-# timeout) to touch the network from the render path.
-CONTROL_UPDATE_CACHE="${CONTROL_UPDATE_CACHE:-${SCRIPT_DIR:-.}/.update-check}"
-CONTROL_UPDATE_MAX_AGE="${CONTROL_UPDATE_MAX_AGE:-21600}"   # 6h
+# Header row: the AzerothCore checkout's branch and commit, plus whether origin
+# carries newer ones. The fetch runs detached in the background with its result
+# cached in a file - the menu repaints far too often (and on a 60s read timeout)
+# to touch the network from the render path. The job's output goes to
+# <cache>.log so a header stuck on "unknown" can be explained without re-running
+# the fetch by hand.
+ACORE_UPDATE_CACHE="${ACORE_UPDATE_CACHE:-${SCRIPT_DIR:-.}/.update-check}"
+ACORE_UPDATE_MAX_AGE="${ACORE_UPDATE_MAX_AGE:-21600}"   # 6h
 
-# Written by update_control_scripts / the installer. Falls back to the source
-# checkout's HEAD, which is the same thing unless someone pulled there by hand.
-control_installed_commit() {
-    local f="${SCRIPT_DIR:-.}/.control-commit"
-    if [ -s "$f" ]; then head -1 "$f"; else
-        gitq "${CONTROL_SOURCE_DIR:-/nonexistent}" rev-parse --short HEAD 2>/dev/null
-    fi
-}
-
-# Cache holds the number of commits between the installed one and origin; the
-# job's output goes to <cache>.log, so a header stuck on "unknown" can be
-# explained without re-running the fetch by hand.
-# Stale (or missing) cache: bump its mtime first so a hanging or failing fetch
-# cannot respawn on every repaint, then let the background job fill it in.
-control_update_refresh() {
-    local src="${CONTROL_SOURCE_DIR:-}" age=0 inst
-    # rev-parse, not [ -d "$src/.git" ]: CONTROL_SOURCE_DIR is the repo's
-    # Control/ subdirectory, so .git lives further up.
+# Cache holds how many commits origin is ahead. Stale (or missing): bump its
+# mtime first so a hanging or failing fetch cannot respawn on every repaint,
+# then let the background job fill it in.
+acore_update_refresh() {
+    local src="${ACORE_DIR:-}" age=0
     [ -n "$src" ] || return 0
     gitq "$src" rev-parse --git-dir >/dev/null 2>&1 || return 0
-    if [ -f "$CONTROL_UPDATE_CACHE" ]; then
-        age=$(( $(date +%s) - $(stat -c %Y "$CONTROL_UPDATE_CACHE" 2>/dev/null || echo 0) ))
-        [ "$age" -lt "$CONTROL_UPDATE_MAX_AGE" ] && return 0
+    if [ -f "$ACORE_UPDATE_CACHE" ]; then
+        age=$(( $(date +%s) - $(stat -c %Y "$ACORE_UPDATE_CACHE" 2>/dev/null || echo 0) ))
+        [ "$age" -lt "$ACORE_UPDATE_MAX_AGE" ] && return 0
     fi
-    touch "$CONTROL_UPDATE_CACHE" 2>/dev/null || return 0
-    inst="$(control_installed_commit)"
+    touch "$ACORE_UPDATE_CACHE" 2>/dev/null || return 0
     (
         # No stdin and no credential prompt: a background git that asks for a
         # password over the terminal gets stopped by SIGTTIN and the header
@@ -180,30 +168,32 @@ control_update_refresh() {
         # Always write something, so a failed check reads as "unknown" instead.
         exec </dev/null
         export GIT_TERMINAL_PROMPT=0
-        g() { timeout 60 git -C "$src" -c safe.directory='*' "$@"; }
+        g() { timeout 120 git -C "$src" -c safe.directory='*' "$@"; }
         b="$(g rev-parse --abbrev-ref HEAD 2>/dev/null)"
         n=""
-        if [ -n "$b" ] && [ "$b" != HEAD ] && g fetch --quiet --prune origin "$b"; then
-            n="$(g rev-list --count "${inst:-HEAD}..origin/$b" 2>/dev/null)"
+        if [ -n "$b" ] && [ "$b" != HEAD ] && g fetch --quiet origin "$b"; then
+            n="$(g rev-list --count "HEAD..origin/$b" 2>/dev/null)"
         fi
-        printf '%s\n' "${n:-x}" > "$CONTROL_UPDATE_CACHE"
-    ) >"$CONTROL_UPDATE_CACHE.log" 2>&1 &
+        printf '%s
+' "${n:-x}" > "$ACORE_UPDATE_CACHE"
+    ) >"$ACORE_UPDATE_CACHE.log" 2>&1 &
     disown 2>/dev/null || true
 }
 
-control_version_dot() {
-    control_update_refresh
-    local inst n state
-    inst="$(control_installed_commit)"
-    read -r n < "$CONTROL_UPDATE_CACHE" 2>/dev/null || n=""
+# Replaces a plain "Branch:" row: branch, commit, and the cached update state.
+acore_version_dot() {
+    acore_update_refresh
+    local head n state
+    head="$(git_owner rev-parse --short HEAD 2>/dev/null)"
+    read -r n < "$ACORE_UPDATE_CACHE" 2>/dev/null || n=""
     case "$n" in
-        '')          state="${DIM}checking...${RESET}" ;;
-        0)           state="${GREEN}up to date${RESET}" ;;
-        *[!0-9]*)    state="${DIM}unknown${RESET}" ;;
-        1)           state="${YELLOW}update available (1 commit)${RESET}" ;;
-        *)           state="${YELLOW}update available ($n commits)${RESET}" ;;
+        '')       state="${DIM}checking...${RESET}" ;;
+        0)        state="${GREEN}up to date${RESET}" ;;
+        *[!0-9]*) state="${DIM}update state unknown${RESET}" ;;
+        1)        state="${YELLOW}update available (1 commit)${RESET}" ;;
+        *)        state="${YELLOW}update available ($n commits)${RESET}" ;;
     esac
-    echo -e "$(status_row 🧬 "Control:")${CYAN}${inst:-unknown}${RESET}  ${state}"
+    echo -e "$(status_row 🌿 "Branch:")${CYAN}$(current_branch)${RESET}  ${DIM}${head:-?}${RESET}  ${state}"
 }
 
 # --- privilege, git-as-owner, tmux, server process control ----------------

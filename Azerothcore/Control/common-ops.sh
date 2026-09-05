@@ -86,10 +86,6 @@ update_control_scripts() {   # update_control_scripts <menu-basename>
         if install -m 0755 "$f" "$SCRIPT_DIR/$(basename "$f")"; then n=$((n + 1)); fi
     done
     echo "Control scripts updated from $src ($n files)"
-    # Record what was installed and drop the cached update count, so the menu
-    # header reports the new commit instead of the stale "update available".
-    gitq "$src" rev-parse --short HEAD > "$SCRIPT_DIR/.control-commit" 2>/dev/null || true
-    rm -f "$SCRIPT_DIR/.update-check"
     # Values summaries: 3-way merge against a stored baseline so template changes
     # (new keys, changed defaults, reworded comments) come through, while any key
     # the operator actually tuned keeps its value.
