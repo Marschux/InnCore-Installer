@@ -130,7 +130,7 @@ _realm_header_query() {
                      WHEN 3 THEN 'Administrator' WHEN 4 THEN 'Console' ELSE 'Player' END
              FROM realmlist ORDER BY id;" 2>/dev/null)"
     [ -n "$rows" ] || return 0
-    echo ""
+    hr
     printf "  ${DIM}%-3s %-12.12s %-9s %-19.19s %-12s %-9s %s${RESET}\n" \
         ID Name Type Address Flag TZ Security
     # Pad every field to width first, then wrap in colour and emit with echo -e -
