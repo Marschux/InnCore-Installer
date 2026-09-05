@@ -156,7 +156,9 @@ control_installed_commit() {
     fi
 }
 
-# Cache holds the number of commits between the installed one and origin.
+# Cache holds the number of commits between the installed one and origin; the
+# job's output goes to <cache>.log, so a header stuck on "unknown" can be
+# explained without re-running the fetch by hand.
 # Stale (or missing) cache: bump its mtime first so a hanging or failing fetch
 # cannot respawn on every repaint, then let the background job fill it in.
 control_update_refresh() {
@@ -185,7 +187,7 @@ control_update_refresh() {
             n="$(g rev-list --count "${inst:-HEAD}..origin/$b" 2>/dev/null)"
         fi
         printf '%s\n' "${n:-x}" > "$CONTROL_UPDATE_CACHE"
-    ) >/dev/null 2>&1 &
+    ) >"$CONTROL_UPDATE_CACHE.log" 2>&1 &
     disown 2>/dev/null || true
 }
 
