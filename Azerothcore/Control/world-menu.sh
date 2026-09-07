@@ -248,12 +248,18 @@ build_menu() {
 config_menu() {
     while true; do
         submenu_title "📝  CONFIG & MAINTENANCE" "$COLOR_CONFIG"
-        echo -e "  ${COLOR_CONFIG}[1]${RESET}  Edit values_world.conf (summary)"
-        echo -e "  ${COLOR_CONFIG}[2]${RESET}  Apply values_world.conf -> worldserver.conf"
-        echo -e "  ${COLOR_CONFIG}[3]${RESET}  Edit values_playerbots.conf (summary)"
-        echo -e "  ${COLOR_CONFIG}[4]${RESET}  Apply values_playerbots.conf -> playerbots.conf"
-        echo -e "  ${COLOR_CONFIG}[5]${RESET}  Edit any .conf (worldserver + module plugins)"
-        echo -e "  ${COLOR_CONFIG}[0]${RESET}  Back"
+        menu_section "$COLOR_CONFIG" "🌍  WORLDSERVER"
+        echo -e "  ${DIM}values/values_world.conf  ->  ${WORLD_CONF}${RESET}"
+        echo -e "  ${COLOR_CONFIG}[1]${RESET}  ✏️   Edit summary          ${COLOR_CONFIG}[2]${RESET}  ✅  Apply to worldserver.conf"
+
+        menu_section "$COLOR_CONFIG" "🤖  PLAYERBOTS"
+        echo -e "  ${DIM}values/values_playerbots.conf  ->  ${PLAYERBOTS_CONF}${RESET}"
+        echo -e "  ${COLOR_CONFIG}[3]${RESET}  ✏️   Edit summary          ${COLOR_CONFIG}[4]${RESET}  ✅  Apply to playerbots.conf"
+
+        menu_section "$COLOR_CONFIG" "📄  RAW FILES"
+        echo -e "  ${COLOR_CONFIG}[5]${RESET}  🔧  Edit any .conf (worldserver + module plugins)"
+        echo ""
+        echo -e "  ${COLOR_CONFIG}[0]${RESET}  🚪  Back"
         echo ""; menu_footer
         read -rp "🔹  Choice [0-5]: " choice
         case "$choice" in

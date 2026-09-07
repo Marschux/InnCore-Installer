@@ -59,11 +59,17 @@ apply_auth_values() {
 config_menu() {
     while true; do
         submenu_title "📝  CONFIG & MAINTENANCE" "$COLOR_CONFIG"
-        echo -e "  ${COLOR_CONFIG}[1]${RESET}  Edit values_auth.conf (summary)"
-        echo -e "  ${COLOR_CONFIG}[2]${RESET}  Apply values_auth.conf -> authserver.conf"
-        echo -e "  ${COLOR_CONFIG}[3]${RESET}  Edit authserver.conf (raw)"
-        echo -e "  ${COLOR_CONFIG}[4]${RESET}  Apply cross-faction (two-side) RBAC"
-        echo -e "  ${COLOR_CONFIG}[0]${RESET}  Back"
+        menu_section "$COLOR_CONFIG" "🔐  AUTHSERVER"
+        echo -e "  ${DIM}values/values_auth.conf  ->  ${AUTH_CONF}${RESET}"
+        echo -e "  ${COLOR_CONFIG}[1]${RESET}  ✏️   Edit summary          ${COLOR_CONFIG}[2]${RESET}  ✅  Apply to authserver.conf"
+
+        menu_section "$COLOR_CONFIG" "📄  RAW FILES"
+        echo -e "  ${COLOR_CONFIG}[3]${RESET}  🔧  Edit authserver.conf directly"
+
+        menu_section "$COLOR_CONFIG" "🌍  DATABASE"
+        echo -e "  ${COLOR_CONFIG}[4]${RESET}  🤝  Apply cross-faction (two-side) RBAC"
+        echo ""
+        echo -e "  ${COLOR_CONFIG}[0]${RESET}  🚪  Back"
         echo ""; menu_footer
         read -rp "🔹  Choice [0-4]: " choice
         case "$choice" in
