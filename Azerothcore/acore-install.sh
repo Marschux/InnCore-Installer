@@ -528,24 +528,24 @@ collect_world_inputs() {
     WORLD_DIR=${WORLD_DIR:-/opt/ac-worldserver}
     read -rp "AzerothCore branch for the Worldserver [Playerbot]: " WORLD_BRANCH
     WORLD_BRANCH=${WORLD_BRANCH:-Playerbot}
-    collect_auth_db_inputs
 }
 
 # The worldserver reads the auth database over the network when it runs on its
-# own LXC. Ask for that box once here, so worldserver.conf and values_world.conf
-# get a working LoginDatabaseInfo instead of the 127.0.0.1 placeholder.
+# own LXC. Ask for that box here, so worldserver.conf and values_world.conf get
+# a working LoginDatabaseInfo instead of the 127.0.0.1 placeholder. Runs after
+# collect_database_password - the auth password defaults to the one just given.
 # Skipped for a Both install - auth's MySQL is then local anyway.
 collect_auth_db_inputs() {
     [ -n "${AUTH_DIR:-}" ] && return 0
     while true; do
-        read -rp "IP of the Authserver (its MySQL) [127.0.0.1]: " AUTH_DB_HOST
+        read -rp "IP of the Authserver, or 127.0.0.1 if its MySQL runs here [127.0.0.1]: " AUTH_DB_HOST
         AUTH_DB_HOST=${AUTH_DB_HOST:-127.0.0.1}
         if [[ "$AUTH_DB_HOST" =~ ^[A-Za-z0-9._-]+$ ]]; then break; fi
         warn "Invalid host. Use an IP or hostname."
     done
     if [ "$AUTH_DB_HOST" = "127.0.0.1" ]; then AUTH_DB_PASS=""; return 0; fi
     while true; do
-        read -rsp "Password of the auth MySQL user 'acore' (empty = same as this box): " AUTH_DB_PASS
+        read -rsp "MySQL password of 'acore' ON THE AUTHSERVER (Enter = same as above): " AUTH_DB_PASS
         echo ""
         case "$AUTH_DB_PASS" in
             *[\;\"\']*) warn "Password must not contain  ;  \"  or  '  characters."; continue ;;
@@ -996,6 +996,7 @@ main() {
             3)
                 collect_world_inputs
                 collect_database_password
+                collect_auth_db_inputs
                 ask_install_control world
                 run_worldserver
                 offer_menu_launch world
