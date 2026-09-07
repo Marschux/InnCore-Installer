@@ -1292,7 +1292,7 @@ add_or_update_realm() {
     validate_number "$icon" "Icon"
 
     echo ""
-    echo -e "${YELLOW}💡 flag:${NC} 0=None, 1=Invalid, 2=Offline, 4=Build, 32=Recommended, 64=New, 128=Full"
+    echo -e "${YELLOW}💡 flag:${NC} 0=None, 1=Invalid, 2=Offline, 4=Build, 8=Medium, 16=Medium, 32=Recommended, 64=New, 128=Full"
     echo -e "${YELLOW}   Note:${NC} the worldserver clears/sets bit 2 itself on start/shutdown."
     read -p "🔹 Flag [$def_flag]: " flag
     flag=${flag:-$def_flag}
