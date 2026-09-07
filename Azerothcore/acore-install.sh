@@ -537,15 +537,18 @@ collect_world_inputs() {
 # Skipped for a Both install - auth's MySQL is then local anyway.
 collect_auth_db_inputs() {
     [ -n "${AUTH_DIR:-}" ] && return 0
+    echo ""
+    hint "The worldserver also needs the auth database (acore_auth). It lives on"
+    hint "the Authserver, so LoginDatabaseInfo points at that machine, not here."
     while true; do
-        read -rp "IP of the Authserver, or 127.0.0.1 if its MySQL runs here [127.0.0.1]: " AUTH_DB_HOST
+        read -rp "IP of the Authserver (127.0.0.1 if its MySQL runs on this machine) [127.0.0.1]: " AUTH_DB_HOST
         AUTH_DB_HOST=${AUTH_DB_HOST:-127.0.0.1}
         if [[ "$AUTH_DB_HOST" =~ ^[A-Za-z0-9._-]+$ ]]; then break; fi
         warn "Invalid host. Use an IP or hostname."
     done
     if [ "$AUTH_DB_HOST" = "127.0.0.1" ]; then AUTH_DB_PASS=""; return 0; fi
     while true; do
-        read -rsp "MySQL password of 'acore' ON THE AUTHSERVER (Enter = same as above): " AUTH_DB_PASS
+        read -rsp "Password of the MySQL user 'acore' on the AUTHSERVER (Enter = same as above): " AUTH_DB_PASS
         echo ""
         case "$AUTH_DB_PASS" in
             *[\;\"\']*) warn "Password must not contain  ;  \"  or  '  characters."; continue ;;
@@ -556,7 +559,7 @@ collect_auth_db_inputs() {
 
 collect_database_password() {
     while true; do
-        read -rsp "Password for the MySQL user 'acore': " DB_PASS
+        read -rsp "Password for the MySQL user 'acore' on THIS machine: " DB_PASS
         echo ""
         # AzerothCore's *DatabaseInfo is a ';'-delimited list inside a '"' pair;
         # a password containing any of ; " ' can't be represented there (and
