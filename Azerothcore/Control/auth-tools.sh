@@ -1130,7 +1130,7 @@ show_realmlist_table() {
         return
     fi
 
-    printf " %-4s %-18s %-10s %-22s %-22s %-6s %-5s %-5s %-4s %-7s\n" \
+    printf " %-4s %-18s %-10s %-22s %-22s %-6s %-17s %-5s %-4s %-7s\n" \
         "ID" "Name" "Type" "Address" "LocalAddress" "Port" "Flag" "TZ" "GM" "Build"
     echo "--------------------------------------------------------------------------------"
 
@@ -1138,8 +1138,9 @@ show_realmlist_table() {
         realm_type=$(get_realm_type_name "$icon")
         cidr=$(mask_to_cidr "$netmask")
         local_display="${local_address}${cidr}"
+        flag=$(realm_flag_names "$flag")
 
-        printf " %-4s %-18s %-10s %-22s %-22s %-6s %-5s %-5s %-4s %-7s\n" \
+        printf " %-4s %-18s %-10s %-22s %-22s %-6s %-17s %-5s %-4s %-7s\n" \
             "$id" "$name" "$realm_type" "$address" "$local_display" "$port" "$flag" "$timezone" "$security" "$build"
     done <<< "$rows"
 
@@ -1166,7 +1167,7 @@ show_realmlist_table_with_status() {
         return
     fi
 
-    printf " %-4s %-18s %-10s %-22s %-22s %-6s %-5s %-5s %-4s %-7s %-8s\n" \
+    printf " %-4s %-18s %-10s %-22s %-22s %-6s %-17s %-5s %-4s %-7s %-8s\n" \
         "ID" "Name" "Type" "Address" "LocalAddress" "Port" "Flag" "TZ" "GM" "Build" "Status"
     echo "--------------------------------------------------------------------------------------------"
 
@@ -1174,6 +1175,7 @@ show_realmlist_table_with_status() {
         realm_type=$(get_realm_type_name "$icon")
         cidr=$(mask_to_cidr "$netmask")
         local_display="${local_address}${cidr}"
+        flag=$(realm_flag_names "$flag")
         status=$(check_realm_online "$address" "$port")
 
         if [ "$status" = "ONLINE" ]; then
@@ -1182,7 +1184,7 @@ show_realmlist_table_with_status() {
             status="${RED}OFFLINE${NC}"
         fi
 
-        printf " %-4s %-18s %-10s %-22s %-22s %-6s %-5s %-5s %-4s %-7s " \
+        printf " %-4s %-18s %-10s %-22s %-22s %-6s %-17s %-5s %-4s %-7s " \
             "$id" "$name" "$realm_type" "$address" "$local_display" "$port" "$flag" "$timezone" "$security" "$build"
         echo -e "$status"
     done <<< "$rows"
@@ -1292,7 +1294,7 @@ add_or_update_realm() {
     validate_number "$icon" "Icon"
 
     echo ""
-    echo -e "${YELLOW}💡 flag:${NC} 0=None, 1=Invalid, 2=Offline, 4=Build, 8=Medium, 16=Medium, 32=Recommended, 64=New, 128=Full"
+    echo -e "${YELLOW}💡 flag:${NC} 0=None, 1=Invalid, 2=Offline, 4=Build, 8=Medium, 16=Medium, 32=New, 64=Recommended, 128=Full"
     echo -e "${YELLOW}   Note:${NC} the worldserver clears/sets bit 2 itself on start/shutdown."
     read -p "🔹 Flag [$def_flag]: " flag
     flag=${flag:-$def_flag}

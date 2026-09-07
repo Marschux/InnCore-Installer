@@ -118,9 +118,7 @@ _realm_header_query() {
     local rows id name address port icon flag tz sec
     rows="$(mysql_auth -N -s -e "SELECT id, name, address, port,
                 CASE icon WHEN 1 THEN 'PvP' WHEN 6 THEN 'RP' WHEN 8 THEN 'RP PvP' ELSE 'Normal' END,
-                CASE flag WHEN 0 THEN 'Online' WHEN 1 THEN 'Invalid' WHEN 2 THEN 'Offline'
-                          WHEN 4 THEN 'Build' WHEN 32 THEN 'Recommended' WHEN 64 THEN 'New'
-                          ELSE CONCAT('flag ', flag) END,
+                flag,
                 CASE timezone WHEN 1 THEN 'Dev' WHEN 2 THEN 'US' WHEN 3 THEN 'Oceanic'
                               WHEN 4 THEN 'LatAm' WHEN 6 THEN 'Korea' WHEN 8 THEN 'English'
                               WHEN 9 THEN 'German' WHEN 10 THEN 'French' WHEN 11 THEN 'Spanish'
@@ -131,7 +129,7 @@ _realm_header_query() {
              FROM realmlist ORDER BY id;" 2>/dev/null)"
     [ -n "$rows" ] || return 0
     hr
-    printf "  ${DIM}%-3s %-12.12s %-9s %-19.19s %-12s %-9s %s${RESET}\n" \
+    printf "  ${DIM}%-3s %-12.12s %-9s %-19.19s %-17s %-9s %s${RESET}\n" \
         ID Name Type Address Flag TZ Security
     # Pad every field to width first, then wrap in colour and emit with echo -e -
     # printf does not expand \033 inside %s arguments, so a coloured %s prints the
@@ -139,13 +137,14 @@ _realm_header_query() {
     local tc fc sc idc namec addrc iconc flagc tzc secc
     while IFS=$'\t' read -r id name address port icon flag tz sec; do
         case "$icon" in PvP) tc=$RED ;; RP) tc=$BLUE ;; "RP PvP") tc=$PURPLE ;; *) tc=$GREEN ;; esac
-        case "$flag" in Online) fc=$GREEN ;; Offline|Invalid) fc=$RED ;; Recommended) fc=$GOLD ;; New) fc=$CYAN ;; *) fc=$DIM ;; esac
+        flag="$(realm_flag_names "$flag")"
+        case "$flag" in Online) fc=$GREEN ;; *Offline*|*Invalid*) fc=$RED ;; *Recommended*) fc=$GOLD ;; *New*) fc=$CYAN ;; *) fc=$DIM ;; esac
         case "$sec" in Player) sc=$GREEN ;; Moderator|Gamemaster) sc=$GOLD ;; Administrator|Console) sc=$RED ;; *) sc=$DIM ;; esac
         printf -v idc   '%-3s'     "$id"
         printf -v namec '%-12.12s' "$name"
         printf -v addrc '%-19.19s' "${address}:${port}"
         printf -v iconc '%-9s'     "$icon"
-        printf -v flagc '%-12s'    "$flag"
+        printf -v flagc '%-17.17s' "$flag"
         printf -v tzc   '%-9s'     "$tz"
         printf -v secc  '%s'       "$sec"
         echo -e "  ${CYAN}${idc}${RESET} ${namec} ${tc}${iconc}${RESET} ${addrc} ${fc}${flagc}${RESET} ${TEAL}${tzc}${RESET} ${sc}${secc}${RESET}"

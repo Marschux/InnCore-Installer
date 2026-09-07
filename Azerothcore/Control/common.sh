@@ -107,6 +107,20 @@ run_step() {   # run_step "<script or function>" [args...]
 }
 
 # Fixed-width label so the status block lines up regardless of icon/word width.
+# realmlist.flag is a bitmask, so a plain lookup only ever labels single bits -
+# 34 (Offline+New) fell through as "flag 34". Decode every set bit instead.
+realm_flag_names() {   # realm_flag_names <flag>
+    local f="$1" out="" pair bit name
+    if ! [[ "$f" =~ ^[0-9]+$ ]]; then echo "$f"; return 0; fi
+    if [ "$f" -eq 0 ]; then echo "Online"; return 0; fi
+    for pair in 1:Invalid 2:Offline 4:Build 8:Medium 16:Medium 32:New 64:Recommended 128:Full; do
+        bit=${pair%%:*}; name=${pair#*:}
+        if (( f & bit )); then out+="+$name"; fi
+    done
+    if (( f & ~255 )); then out+="+$(( f & ~255 ))"; fi
+    echo "${out#+}"
+}
+
 status_row() { printf ' %s  %-15s' "$1" "$2"; }
 
 status_dot() {   # status_dot <process-name> <session>
