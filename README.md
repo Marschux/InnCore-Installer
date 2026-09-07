@@ -97,8 +97,8 @@ config.
    line (three in `values_world.conf`, plus `PlayerbotsDatabaseInfo` in
    `values_playerbots.conf`); applying a summary that still carries the
    `password` placeholder is skipped with a warning. If Auth and World are on
-   different machines, `LoginDatabaseInfo` still needs the auth server's
-   address instead of `127.0.0.1`. Leave `AiPlayerbot.Min/MaxRandomBots` small until the server has
+   different machines, the installer asked for the auth server's IP (and its
+   `acore` password) and already wrote both into `LoginDatabaseInfo`. Leave `AiPlayerbot.Min/MaxRandomBots` small until the server has
    booted once, then raise it in steps (a few hundred at a time, restart in
    between) — every increase generates the new bot characters at that boot.
 2. `Start server`, then `World console` → confirm creating `acore_world`,

@@ -178,9 +178,19 @@ install_control_role() {
     # install (menu 5) nothing is in memory, so read it back out of the
     # server's own conf. Shadowed locally so it never leaks past this call.
     local DB_PASS="${DB_PASS:-}"
-    [ -n "$DB_PASS" ] || DB_PASS="$(sed -nE 's/^[[:space:]]*LoginDatabaseInfo[[:space:]]*=[[:space:]]*"[^";]*;[^";]*;[^";]*;([^";]*);.*/\1/p' \
+    [ -n "$DB_PASS" ] || DB_PASS="$(sed -nE 's/^[[:space:]]*[A-Za-z]*DatabaseInfo[[:space:]]*=[[:space:]]*"[^";]*;[^";]*;[^";]*;([^";]*);.*/\1/p' \
         "$acore/env/dist/etc/${role}server.conf" 2>/dev/null | tail -1)"
     [ -n "$DB_PASS" ] || warn "No DB password found - values_*.conf keep the \"password\" placeholder."
+
+    # Same for the auth box behind LoginDatabaseInfo, so values_world.conf keeps
+    # pointing there instead of falling back to the 127.0.0.1 placeholder.
+    local AUTH_DB_HOST="${AUTH_DB_HOST:-}" AUTH_DB_PASS="${AUTH_DB_PASS:-}"
+    if [ "$role" = world ] && [ -z "$AUTH_DB_HOST" ]; then
+        AUTH_DB_HOST="$(sed -nE 's/^[[:space:]]*LoginDatabaseInfo[[:space:]]*=[[:space:]]*"([^";]*);.*/\1/p' \
+            "$acore/env/dist/etc/worldserver.conf" 2>/dev/null | tail -1)"
+        AUTH_DB_PASS="$(sed -nE 's/^[[:space:]]*LoginDatabaseInfo[[:space:]]*=[[:space:]]*"[^";]*;[^";]*;[^";]*;([^";]*);.*/\1/p' \
+            "$acore/env/dist/etc/worldserver.conf" 2>/dev/null | tail -1)"
+    fi
 
     sudo install -d -o "$owner" -g "$owner" "$target"
     sudo install -m 0755 "$src/common.sh" "$target/common.sh"
@@ -224,6 +234,7 @@ EOF
         # keeps the placeholder on purpose - it is the merge baseline, so the
         # real password below counts as an operator edit and survives updates.
         if [ -n "${DB_PASS:-}" ]; then write_conf_db_password "$target/values/$1"; fi
+        write_conf_login_db "$target/values/$1"
     }
 
     if [ "$role" = auth ]; then
@@ -517,6 +528,30 @@ collect_world_inputs() {
     WORLD_DIR=${WORLD_DIR:-/opt/ac-worldserver}
     read -rp "AzerothCore branch for the Worldserver [Playerbot]: " WORLD_BRANCH
     WORLD_BRANCH=${WORLD_BRANCH:-Playerbot}
+    collect_auth_db_inputs
+}
+
+# The worldserver reads the auth database over the network when it runs on its
+# own LXC. Ask for that box once here, so worldserver.conf and values_world.conf
+# get a working LoginDatabaseInfo instead of the 127.0.0.1 placeholder.
+# Skipped for a Both install - auth's MySQL is then local anyway.
+collect_auth_db_inputs() {
+    [ -n "${AUTH_DIR:-}" ] && return 0
+    while true; do
+        read -rp "IP of the Authserver (its MySQL) [127.0.0.1]: " AUTH_DB_HOST
+        AUTH_DB_HOST=${AUTH_DB_HOST:-127.0.0.1}
+        if [[ "$AUTH_DB_HOST" =~ ^[A-Za-z0-9._-]+$ ]]; then break; fi
+        warn "Invalid host. Use an IP or hostname."
+    done
+    if [ "$AUTH_DB_HOST" = "127.0.0.1" ]; then AUTH_DB_PASS=""; return 0; fi
+    while true; do
+        read -rsp "Password of the auth MySQL user 'acore' (empty = same as this box): " AUTH_DB_PASS
+        echo ""
+        case "$AUTH_DB_PASS" in
+            *[\;\"\']*) warn "Password must not contain  ;  \"  or  '  characters."; continue ;;
+        esac
+        break
+    done
 }
 
 collect_database_password() {
@@ -549,6 +584,17 @@ write_conf_db_password() {   # write_conf_db_password <conf-file>
     [ -f "$conf" ] || return 0
     esc="$(printf '%s' "$DB_PASS" | sed "s/[&${d}\\]/\\\\&/g")"
     sudo sed -i -E "s${d}^([[:space:]]*[A-Za-z]*DatabaseInfo[[:space:]]*=[[:space:]]*\"[^\";]*;[^\";]*;[^\";]*;)[^\";]*${d}\\1${esc}${d}" "$conf"
+}
+
+# Point the LoginDatabaseInfo line at the auth box collected above. Runs after
+# write_conf_db_password, which has just set every DatabaseInfo password to the
+# local one - the login line needs the auth LXC's host and its own password.
+write_conf_login_db() {   # write_conf_login_db <conf-file>
+    local conf="$1" d=$'\x1f' esc
+    [ -f "$conf" ] || return 0
+    [ -n "${AUTH_DB_HOST:-}" ] && [ "$AUTH_DB_HOST" != "127.0.0.1" ] || return 0
+    esc="$(printf '%s' "${AUTH_DB_PASS:-$DB_PASS}" | sed "s/[&${d}\\]/\\\\&/g")"
+    sudo sed -i -E "s${d}^([[:space:]]*LoginDatabaseInfo[[:space:]]*=[[:space:]]*\")[^\";]*(;[^\";]*;[^\";]*;)[^\";]*${d}\\1${AUTH_DB_HOST}\\2${esc}${d}" "$conf"
 }
 
 setup_database() {
@@ -807,6 +853,7 @@ run_worldserver() {
     step "8. Folder structure and config files"
     cp "$WORLD_DIR/env/dist/etc/worldserver.conf.dist" "$WORLD_DIR/env/dist/etc/worldserver.conf"
     write_conf_db_password "$WORLD_DIR/env/dist/etc/worldserver.conf"
+    write_conf_login_db "$WORLD_DIR/env/dist/etc/worldserver.conf"
     echo -e "\nAllowTwoSide.WhoList = 1" >> "$WORLD_DIR/env/dist/etc/worldserver.conf"
     cp "$WORLD_DIR/env/dist/etc/modules/playerbots.conf.dist" "$WORLD_DIR/env/dist/etc/modules/playerbots.conf"
     echo "worldserver.conf and playerbots.conf created."
