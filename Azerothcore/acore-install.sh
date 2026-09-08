@@ -935,10 +935,8 @@ EOF
 
 run_mysql_only() {
     step "Install MySQL"
-    setup_mysql_apt_repo || exit 1
-    apt_get install -y mysql-server libmysqlclient-dev
-    sudo systemctl enable --now mysql
 
+    # All questions up front, then the install runs unattended.
     echo "Which profile should the MySQL tuning be calculated for?"
     echo "  1) Auth"
     echo "  2) World"
@@ -951,8 +949,12 @@ run_mysql_only() {
         3) TUNING_PROFILE=both ;;
         *) warn "Invalid choice."; exit 1 ;;
     esac
-
     collect_database_password
+
+    setup_mysql_apt_repo || exit 1
+    apt_get install -y mysql-server libmysqlclient-dev
+    sudo systemctl enable --now mysql
+
     setup_database "$TUNING_PROFILE"
     unset DB_PASS
     step "Final step"
