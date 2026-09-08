@@ -181,15 +181,13 @@ char_db_console() {
 apply_world_values() {
     apply_values "$SCRIPT_DIR/values/values_world.conf" "$WORLD_CONF" || return 1
     echo ""
-    read -rp "Restart worldserver now to load the changes? [y/N]: " r
-    case "$r" in y|Y|j|J) restart_world ;; *) echo "Not restarted - changes apply on next restart." ;; esac
+    echo "Changes apply on the next worldserver restart."
 }
 
 apply_playerbots_values() {
     apply_values "$SCRIPT_DIR/values/values_playerbots.conf" "$PLAYERBOTS_CONF" || return 1
     echo ""
-    read -rp "Restart worldserver now to load the changes? [y/N]: " r
-    case "$r" in y|Y|j|J) restart_world ;; *) echo "Not restarted - changes apply on next restart." ;; esac
+    echo "Changes apply on the next worldserver restart."
 }
 
 build_menu() {

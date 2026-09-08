@@ -52,8 +52,7 @@ realm_menu()   { run_manager auth-tools.sh realms; }
 apply_auth_values() {
     apply_values "$SCRIPT_DIR/values/values_auth.conf" "$AUTH_CONF" || return 1
     echo ""
-    read -rp "Restart authserver now to load the changes? [y/N]: " r
-    case "$r" in y|Y|j|J) restart_auth ;; *) echo "Not restarted - changes apply on next restart." ;; esac
+    echo "Changes apply on the next authserver restart."
 }
 
 config_menu() {
