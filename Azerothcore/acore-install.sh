@@ -94,6 +94,9 @@ check_disk() {
 #      frontend setting for the duration and restore it afterwards.
 run_install_deps() {
     local prev_frontend
+    # mysql-apt-config (pulled in by acore.sh install-deps) pre-depends on these
+    # and a minimal Debian has neither - dpkg -i would refuse the package.
+    apt_get install -y ca-certificates curl gnupg lsb-release
     sudo debconf-set-selections <<'EOF'
 mysql-apt-config mysql-apt-config/select-server select mysql-8.4-lts
 mysql-apt-config mysql-apt-config/select-product select Ok
