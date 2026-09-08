@@ -1872,6 +1872,10 @@ case "${1:-}" in
     realms|motd)
         realm_motd_menu
         ;;
+    autoincrement)
+        set_account_auto_increment
+        pause_menu
+        ;;
     *)
         while true; do
             clear

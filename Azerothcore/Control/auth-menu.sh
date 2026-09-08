@@ -68,15 +68,17 @@ config_menu() {
 
         menu_section "$COLOR_CONFIG" "🌍  DATABASE"
         echo -e "  ${COLOR_CONFIG}[4]${RESET}  🤝  Apply cross-faction (two-side) RBAC"
+        echo -e "  ${COLOR_CONFIG}[5]${RESET}  🧬  Account AUTO_INCREMENT"
         echo ""
         echo -e "  ${COLOR_CONFIG}[0]${RESET}  🚪  Back"
         echo ""; menu_footer
-        read -rp "🔹  Choice [0-4]: " choice
+        read -rp "🔹  Choice [0-5]: " choice
         case "$choice" in
             1) "${EDITOR:-nano}" "$SCRIPT_DIR/values/values_auth.conf" ;;
             2) run_step apply_auth_values ;;
             3) "${EDITOR:-nano}" "$AUTH_CONF" ;;
             4) run_step apply_two_side_rbac ;;
+            5) run_manager auth-tools.sh autoincrement ;;
             0) return ;;
             *) echo "Invalid option."; sleep 1 ;;
         esac
