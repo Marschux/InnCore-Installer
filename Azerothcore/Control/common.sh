@@ -287,6 +287,21 @@ server_start() {
     tmx new-session -d -s "$session" \
         "cd '$ACORE_DIR' && '$engine' start '$binary' --server-config '$conf' --session-manager none"
     echo -e "${GREEN}✅  ${name} started.${RESET}"
+    offer_console "$session"
+}
+
+# The interesting part of a start (DB updates, map loading, bot generation, and
+# any error that aborts the boot) scrolls past inside tmux while the menu just
+# says "started". Offer the console right there - menu only, and only on a real
+# terminal, so the restart runner and any scripted call stay untouched.
+offer_console() {   # offer_console <session>
+    local session="$1" ans
+    [ "${MENU_RUNNING:-0}" = 1 ] || return 0
+    [ -t 0 ] || return 0
+    read -rp "Open the console now? [Y/n]  (leave it with Ctrl-B then D): " ans
+    case "$ans" in n|N|no|NO|nein) return 0 ;; esac
+    clear
+    tmx attach -t "$session" 2>/dev/null || echo "No active tmux session: $session"
 }
 
 # Server log for drain detection. AzerothCore writes it into the working dir the
