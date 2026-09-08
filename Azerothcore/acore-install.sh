@@ -156,15 +156,11 @@ offer_control_installation() {
 
 # After a build, drop straight into the matching management menu instead of
 # returning to the install menu. Only when its wrapper was actually installed.
-offer_menu_launch() {
+launch_menu() {
     local role="$1"
-    local wrapper="/usr/local/bin/${role}menu" ans
+    local wrapper="/usr/local/bin/${role}menu"
     [ -x "$wrapper" ] || return
-    read -rp "Open ${role}menu now? [Y/n]: " ans
-    case "$ans" in
-        n|N|no|NO) return ;;
-        *) exec sudo "$wrapper" ;;
-    esac
+    exec sudo "$wrapper"
 }
 
 # Installs the Control menu for one role. All four arguments are required;
@@ -1004,7 +1000,7 @@ main() {
                 collect_database_password
                 ask_install_control auth
                 run_authserver
-                offer_menu_launch auth
+                launch_menu auth
                 ;;
             3)
                 collect_world_inputs
@@ -1012,7 +1008,7 @@ main() {
                 collect_auth_db_inputs
                 ask_install_control world
                 run_worldserver
-                offer_menu_launch world
+                launch_menu world
                 ;;
             4)
                 collect_auth_inputs
@@ -1025,8 +1021,8 @@ main() {
                 echo ""
                 read -rp "Open a menu now? [a]uthmenu / [w]orldmenu / [n]o: " ans
                 case "$ans" in
-                    a|A) offer_menu_launch auth ;;
-                    w|W) offer_menu_launch world ;;
+                    a|A) launch_menu auth ;;
+                    w|W) launch_menu world ;;
                 esac
                 ;;
             5)
