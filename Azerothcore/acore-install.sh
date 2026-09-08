@@ -924,7 +924,10 @@ EOF
         || sudo DEBIAN_FRONTEND=noninteractive apt-get -yf install
     rm -f "$deb"
     apt_get update
-    apt-cache policy mysql-community-server 2>/dev/null | grep -q repo.mysql.com         || { warn "MySQL APT repo was not added - see the dpkg errors above."; return 1; }
+    if ! apt-cache policy mysql-community-server 2>/dev/null | grep -q repo.mysql.com; then
+        warn "MySQL APT repo was not added - see the dpkg errors above."
+        return 1
+    fi
 }
 
 run_mysql_only() {
