@@ -997,8 +997,7 @@ while true; do
     echo -e "  ${GREEN}[2]${NC}  ➕  Add account"
     echo -e "  ${MAGENTA}[3]${NC}  ✏️  Edit account"
     echo -e "  ${MAGENTA}[4]${NC}  🛡️  Set GM level"
-    echo -e "  ${MAGENTA}[5]${NC}  🧬  Account AUTO_INCREMENT"
-    echo -e "  ${RED}[6]${NC}  🗑️  Delete account"
+    echo -e "  ${RED}[5]${NC}  🗑️  Delete account"
     echo ""
     echo -e "  ${CYAN}[0]${NC}  ↩️  Back"
     echo "--------------------------------------------------"
@@ -1032,12 +1031,6 @@ while true; do
             ;;
 
         5)
-            clear
-            set_account_auto_increment
-            pause_menu
-            ;;
-
-        6)
             clear
             delete_account_flow
             pause_menu
