@@ -287,21 +287,23 @@ server_start() {
     tmx new-session -d -s "$session" \
         "cd '$ACORE_DIR' && '$engine' start '$binary' --server-config '$conf' --session-manager none"
     echo -e "${GREEN}✅  ${name} started.${RESET}"
-    offer_console "$session"
+    console_follow "$session"
 }
 
-# The interesting part of a start (DB updates, map loading, bot generation, and
-# any error that aborts the boot) scrolls past inside tmux while the menu just
-# says "started". Offer the console right there - menu only, and only on a real
-# terminal, so the restart runner and any scripted call stay untouched.
-offer_console() {   # offer_console <session>
-    local session="$1" ans
+# Boot and shutdown both happen inside tmux (DB updates, map loading, bot
+# generation, the shutdown countdown and the database drain) while the menu only
+# prints "started"/"waiting". Attach so it can be watched live; detaching with
+# Ctrl-B D - or the session ending on shutdown - continues the menu flow.
+# Menu only and only on a real terminal, so the restart runner and any scripted
+# call keep running unattended.
+console_follow() {   # console_follow <session>
+    local session="$1"
     [ "${MENU_RUNNING:-0}" = 1 ] || return 0
     [ -t 0 ] || return 0
-    read -rp "Open the console now? [Y/n]  (leave it with Ctrl-B then D): " ans
-    case "$ans" in n|N|no|NO|nein) return 0 ;; esac
-    clear
-    tmx attach -t "$session" 2>/dev/null || echo "No active tmux session: $session"
+    tmx has-session -t "$session" 2>/dev/null || return 0
+    echo -e "${DIM}Opening the console - Ctrl-B then D returns to the menu.${RESET}"
+    sleep 2
+    tmx attach -t "$session" 2>/dev/null || true
 }
 
 # Server log for drain detection. AzerothCore writes it into the working dir the
@@ -356,6 +358,7 @@ server_stop() {
             tmx send-keys -t "$session" "saveall" Enter
             echo -e "${CYAN}🛑  Sending shutdown (${shutdown_command#server shutdown }s notice)...${RESET}"
             tmx send-keys -t "$session" "$shutdown_command" Enter
+            console_follow "$session"
         else
             echo -e "${CYAN}📨  Sending TERM to ${process} process...${RESET}"
             pkill -TERM -x "$process" 2>/dev/null || true
