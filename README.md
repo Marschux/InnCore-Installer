@@ -29,8 +29,8 @@ The script needs the `Control/` folder sitting next to it, which the
 
 ```bash
 apt update && apt install -y git
-git clone https://github.com/Marschux/core-installer.git /opt/wowserver-install
-cd /opt/wowserver-install/Azerothcore
+git clone https://github.com/Marschux/core-installer.git /opt/core-installer
+cd /opt/core-installer/Azerothcore
 chmod +x acore-install.sh Control/*.sh
 ./acore-install.sh
 ```
@@ -38,7 +38,7 @@ chmod +x acore-install.sh Control/*.sh
 To open the menu again later:
 
 ```bash
-cd /opt/wowserver-install/Azerothcore && ./acore-install.sh
+cd /opt/core-installer/Azerothcore && ./acore-install.sh
 ```
 
 
