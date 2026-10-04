@@ -29,7 +29,7 @@ The script needs the `Control/` folder sitting next to it, which the
 
 ```bash
 apt update && apt install -y git
-git clone https://gitlab.com/grassnotfound/WoW-Privatserver-Installscript.git /opt/wowserver-install
+git clone https://github.com/Marschux/azerothcore-installer.git /opt/wowserver-install
 cd /opt/wowserver-install/Azerothcore
 chmod +x acore-install.sh Control/*.sh
 ./acore-install.sh
