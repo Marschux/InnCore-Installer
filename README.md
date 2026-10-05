@@ -1,4 +1,4 @@
-# WoW Private Server Install Script
+# InnCore Installer
 
 Scripts to set up an AzerothCore WotLK server on a Debian 13 LXC.
 
@@ -29,8 +29,8 @@ The script needs the `Control/` folder sitting next to it, which the
 
 ```bash
 apt update && apt install -y git
-git clone https://github.com/Marschux/core-installer.git /opt/core-installer
-cd /opt/core-installer/Azerothcore
+git clone https://github.com/Marschux/InnCore-Installer.git /opt/inncore-installer
+cd /opt/inncore-installer/Azerothcore
 chmod +x acore-install.sh Control/*.sh
 ./acore-install.sh
 ```
@@ -38,7 +38,7 @@ chmod +x acore-install.sh Control/*.sh
 To open the menu again later:
 
 ```bash
-cd /opt/core-installer/Azerothcore && ./acore-install.sh
+cd /opt/inncore-installer/Azerothcore && ./acore-install.sh
 ```
 
 
