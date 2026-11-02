@@ -280,6 +280,18 @@ EOF
 # --- Daily restart schedule (worldserver) -----------------------------------
 # restart_times.conf : one "HH:MM;LEAD_MINUTES" per line (LEAD = in-game warning)
 # restart_skip.conf  : "YYYY-MM-DD" (whole day) or "YYYY-MM-DD;HH:MM" (one slot)
+# InnControl installed on this box (scripts at /opt/<dir>/, config/ next to
+# them): use its schedule files, so this menu, InnControl's menu and the web
+# panel all edit one plan. Same format, same scheduler unit name.
+if [ -z "${RESTART_TIMES_CONF:-}" ]; then
+    for _ic in /opt/*/20_restart_schedule.sh; do
+        [ -f "${_ic%/*}/config/world_paths.conf" ] || continue
+        RESTART_TIMES_CONF="${_ic%/*}/config/restart_times.conf"
+        RESTART_SKIP_CONF="${_ic%/*}/config/restart_skip.conf"
+        break
+    done
+    unset _ic
+fi
 RESTART_TIMES_CONF="${RESTART_TIMES_CONF:-${SCRIPT_DIR:-.}/restart_times.conf}"
 RESTART_SKIP_CONF="${RESTART_SKIP_CONF:-${SCRIPT_DIR:-.}/restart_skip.conf}"
 
