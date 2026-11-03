@@ -394,7 +394,7 @@ merge_values() {   # merge_values <template> <dst>
 # exists in the target is replaced in place, unknown keys are reported and
 # skipped. A timestamped backup of the target is written first.
 apply_values() {
-    local values="$1" target="$2" backup key value ek ev
+    local values="$1" target="$2" backup key value ek ev alt
     local d=$'\x1f'   # sed delimiter - a byte that can't occur in a .conf value
     require_path "$values" || return 1
     require_path "$target" || return 1
@@ -421,6 +421,19 @@ apply_values() {
         esac
         ek="$(printf '%s' "$key"   | sed 's/[][\\/.^$*+?{}|()]/\\&/g')"
         ev="$(printf '%s' "$value" | sed "s/[\\\\${d}&]/\\\\&/g")"
+        # mod-playerbots renamed AiPlayerbot.* to Playerbots.*. A key missing
+        # under the summary's prefix is tried under the other one, so one
+        # summary patches both an old and a current module.
+        if ! grep -qE "^${ek}[[:space:]]*=" "$target"; then
+            case "$key" in
+                AiPlayerbot.*) alt="Playerbots.${key#AiPlayerbot.}" ;;
+                Playerbots.*)  alt="AiPlayerbot.${key#Playerbots.}" ;;
+                *)             alt="" ;;
+            esac
+            if [ -n "$alt" ] && grep -qE "^${alt//./\\.}[[:space:]]*=" "$target"; then
+                key="$alt"; ek="${alt//./\\.}"
+            fi
+        fi
         if grep -qE "^${ek}[[:space:]]*=" "$target"; then
             sed -i -E "s${d}^${ek}[[:space:]]*=.*${d}${key} = ${ev}${d}" "$target"
             echo -e "  ${GREEN}✓${RESET} $key = $value"

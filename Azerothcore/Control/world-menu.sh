@@ -31,7 +31,7 @@ kill_world() {
     echo -e "${RED}Force-kill discards every character save still queued.${RESET}"
     echo "Use [3] Stop unless the server is genuinely stuck (e.g. hangs on"
     echo "\"Waiting for N characters loading into database\" on a first start)."
-    echo "After killing such a hang, lower AiPlayerbot.MaxRandomBots before restarting."
+    echo "After killing such a hang, lower Playerbots.MaxRandomBots before restarting."
     read -rp "Type KILL to confirm: " c
     if [ "$c" = KILL ]; then
         server_kill worldserver "$WORLD_SESSION"
