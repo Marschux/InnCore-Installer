@@ -273,7 +273,9 @@ User=$SERVER_USER
 Group=$SERVER_USER
 WorkingDirectory=$ACORE_DIR
 RemainAfterExit=yes
-KillMode=none
+# process, not the deprecated none: nothing gets killed either way (the oneshot's
+# main process has exited), ExecStop stops the server gracefully.
+KillMode=process
 ExecStartPre=/bin/sleep 10
 ExecStart=$wrapper start
 ExecStop=$wrapper stop

@@ -269,16 +269,49 @@ reboot_lxc() {   # reboot_lxc <process> <session> [shutdown-command]
 # stopping one unit kills both. CONTROL_TMUX_L comes from control.conf.
 tmx() { tmux -L "${CONTROL_TMUX_L:-default}" "$@"; }
 
+# The tmux server belongs to the cgroup of whoever starts it. Started from an SSH
+# login (menu) it sits in that session's scope, and on a box shutdown systemd
+# SIGTERMs the scope right away: tmux and the server die before the unit's
+# ExecStop can send saveall/shutdown, so queued saves are lost. Outside the unit,
+# start through it instead (systemctl restart: ExecStop finds nothing to stop,
+# ExecStart starts in the unit's cgroup). Without an installed unit, warn.
+start_via_unit() {   # start_via_unit <process> <session>; 1 = start here yourself
+    local unit="azerothcore-${1%server}.service"
+    grep -q "/$unit\$" /proc/self/cgroup 2>/dev/null && return 1   # we are the unit
+    if [ ! -f "/etc/systemd/system/$unit" ]; then
+        echo -e "${YELLOW}⚠️  Autostart is off: a box shutdown will not stop ${1} cleanly.${RESET}"
+        return 1
+    fi
+    upgrade_unit_file "$unit"
+    echo -e "${CYAN}🚀  Starting ${1} through ${unit}, so a box shutdown stops it cleanly...${RESET}"
+    if ! sudo -n systemctl restart "$unit"; then
+        echo -e "${YELLOW}⚠️  systemctl restart ${unit} failed - starting directly.${RESET}"
+        return 1
+    fi
+    console_follow "$2"
+}
+
+# KillMode=none is deprecated (systemd warns on every load and will drop it);
+# process keeps the same effect here: the oneshot's main process is long gone, so
+# nothing is killed and the server's own ExecStop does the stopping.
+upgrade_unit_file() {   # upgrade_unit_file <unit>
+    local f="/etc/systemd/system/$1"
+    grep -q '^KillMode=none$' "$f" 2>/dev/null || return 0
+    sed 's/^KillMode=none$/KillMode=process/' "$f" | sudo -n tee "$f" >/dev/null \
+        && sudo -n systemctl daemon-reload
+}
+
 server_start() {
     local process="$1" engine="$2" binary="$3" conf="$4" session="$5"
     local name="${process^}"
-
-    echo -e "${CYAN}🚀  Starting ${process} via run-engine...${RESET}"
 
     if pgrep -x "$process" >/dev/null 2>&1 || tmx has-session -t "$session" 2>/dev/null; then
         echo -e "${YELLOW}⚠️  ${name} is already running: ${session}${RESET}"
         return 0
     fi
+    start_via_unit "$process" "$session" && return 0
+
+    echo -e "${CYAN}🚀  Starting ${process} via run-engine...${RESET}"
 
     require_path "$engine" || return 1
     require_path "$binary" || return 1
