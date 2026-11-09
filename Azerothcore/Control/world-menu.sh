@@ -312,7 +312,7 @@ menu() {
 }
 
 case "${1:-menu}" in
-    start) start_world ;;
+    start) wait_for_login_db; start_world ;;  # boot/scripted start: auth DB may lag
     stop) stop_world ;;
     restart) restart_world ;;
     status) server_status worldserver "$WORLD_SESSION" ;;

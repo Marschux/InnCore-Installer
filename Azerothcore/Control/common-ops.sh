@@ -206,6 +206,27 @@ read_login_database() {
     [ -n "${DB_HOST:-}" ] && [ -n "${DB_PORT:-}" ] && [ -n "${DB_USER:-}" ] && [ -n "${DB_NAME:-}" ]
 }
 
+# Boot race: when the boxes restart together, the auth DB box can still be booting
+# while this worldserver starts; AzerothCore tries the login DB once and exits,
+# and the oneshot unit stays "active (exited)" with no server. Wait until
+# LoginDatabaseInfo's host:port takes TCP, bounded below the unit's
+# TimeoutStartSec (180 s). bash /dev/tcp, so no netcat needed.
+wait_for_login_db() {   # wait_for_login_db [max_seconds]
+    local max="${1:-150}" end
+    read_login_database "${WORLD_CONF:-}" || return 0   # unknown: start as before
+    end=$((SECONDS + max))
+    timeout 2 bash -c ">/dev/tcp/$DB_HOST/$DB_PORT" 2>/dev/null && return 0
+    echo -e "${CYAN}⏳  Waiting for the auth DB at $DB_HOST:$DB_PORT (max ${max}s)...${RESET}"
+    while [ "$SECONDS" -lt "$end" ]; do
+        sleep 3
+        if timeout 2 bash -c ">/dev/tcp/$DB_HOST/$DB_PORT" 2>/dev/null; then
+            echo -e "${GREEN}✅  Auth DB reachable.${RESET}"
+            return 0
+        fi
+    done
+    echo -e "${YELLOW}⚠️  Auth DB still unreachable after ${max}s - starting anyway.${RESET}"
+}
+
 mysql_auth() {
     read_login_database || { echo "Could not read LoginDatabaseInfo."; return 1; }
     MYSQL_PWD="$DB_PASS" mysql -h "$DB_HOST" -P "$DB_PORT" -u "$DB_USER" "$DB_NAME" "$@"
