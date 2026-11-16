@@ -18,8 +18,6 @@ set +eu
 EDITOR="${EDITOR:-nano}"
 MAGENTA='\033[1;35m'   # the rest of the palette comes from common.sh
 
-MOTD_TEXT_RESULT=""
-
 # mysql_auth (runs a query as the LoginDatabaseInfo user) and read_login_database
 # (parses authserver.conf into DB_HOST..DB_NAME) both come from common-ops.sh.
 
@@ -51,6 +49,28 @@ validate_number() {
         echo -e "${RED}❌ Invalid value for $name:${NC} $value"
         return 1
     fi
+}
+
+# Expansion prompt (0=Classic 1=TBC 2=WotLK) into <var>.
+ask_expansion() {   # ask_expansion <var> <default>
+    echo -e "${YELLOW}💡 Expansion:${NC} 0=Classic, 1=TBC, 2=WotLK"
+    ask_field "$1" Expansion "$2"
+    [[ "${!1}" =~ ^[0-2]$ ]] && return 0
+    echo -e "${RED}❌ Invalid expansion. Allowed values: 0, 1, 2.${NC}"
+    return 1
+}
+
+# True when "SELECT COUNT(*) FROM <from>" is > 0 (false on a DB error too).
+sql_exists() {   # sql_exists "<table> WHERE ..."
+    [ "$(mysql_auth -N -s -e "SELECT COUNT(*) FROM $1;")" -gt 0 ] 2>/dev/null
+}
+
+db_line() { echo -e "${GREEN}🐬  Auth DB:${NC} $DB_NAME @ $DB_HOST:$DB_PORT"; }
+
+account_rows() {   # account_rows <id> <name> <expansion>
+    echo -e " 🆔  ID:          ${GREEN}$1${NC}"
+    echo -e " 👤  Username:    ${GREEN}$2${NC}"
+    echo -e " 🧩  Expansion:   ${GREEN}$3${NC}"
 }
 
 check_python3() {
@@ -142,25 +162,6 @@ get_next_account_id() {
     fi
 }
 
-account_id_exists() {
-    local account_id="$1"
-    local count
-
-    count=$(mysql_auth -N -s -e "SELECT COUNT(*) FROM account WHERE id=$account_id;")
-    [ "$count" -gt 0 ]
-}
-
-account_name_exists() {
-    local account_name="$1"
-    local account_name_escaped
-    local count
-
-    account_name_escaped=$(escape_sql "$account_name")
-    count=$(mysql_auth -N -s -e "SELECT COUNT(*) FROM account WHERE username='$account_name_escaped';")
-
-    [ "$count" -gt 0 ]
-}
-
 add_account() {
     local acc_id acc_name acc_name_esc expansion sql_query next_id
 
@@ -170,7 +171,7 @@ add_account() {
 
     check_python3 || return 1
 
-    echo -e "${GREEN}🐬  Auth database:${NC} $DB_NAME @ $DB_HOST:$DB_PORT"
+    db_line
     echo ""
 
     next_id=$(get_next_account_id)
@@ -178,11 +179,9 @@ add_account() {
     echo -e "${YELLOW}💡 Next normal account ID below 10000:${NC} $next_id"
     echo ""
 
-    read -p "🔹  Account ID [$next_id]: " acc_id
-    acc_id=${acc_id:-$next_id}
-    validate_number "$acc_id" "Account ID" || return 1
+    ask_field acc_id "Account ID" "$next_id" num || return 1
 
-    if account_id_exists "$acc_id"; then
+    if sql_exists "account WHERE id=$acc_id"; then
         echo -e "${RED}❌ Account ID already exists:${NC} $acc_id"
         return 1
     fi
@@ -197,7 +196,7 @@ add_account() {
     _trim acc_name "${acc_name^^}"
     acc_name_esc=$(escape_sql "$acc_name")
 
-    if account_name_exists "$acc_name"; then
+    if sql_exists "account WHERE username='$acc_name_esc'"; then
         echo -e "${RED}❌ Account name already exists:${NC} $acc_name"
         return 1
     fi
@@ -205,19 +204,11 @@ add_account() {
     read_password_srp6 "$acc_name" || return 1
 
     echo ""
-    echo -e "${YELLOW}💡 Expansion:${NC} 0=Classic, 1=TBC, 2=WotLK"
-    read -p "🔹  Expansion [2]: " expansion
-    expansion=${expansion:-2}
-    if [[ ! "$expansion" =~ ^[0-2]$ ]]; then
-        echo -e "${RED}❌ Invalid expansion. Allowed values: 0, 1, 2.${NC}"
-        return 1
-    fi
+    ask_expansion expansion 2 || return 1
 
     echo ""
     box_title "ACCOUNT SUMMARY"
-    echo -e " 🆔  Account ID:  ${GREEN}$acc_id${NC}"
-    echo -e " 👤  Username:    ${GREEN}$acc_name${NC}"
-    echo -e " 🧩  Expansion:   ${GREEN}$expansion${NC}"
+    account_rows "$acc_id" "$acc_name" "$expansion"
     echo -e " 🐬  Auth DB:     ${GREEN}$DB_NAME @ $DB_HOST:$DB_PORT${NC}"
     menu_footer
     echo ""
@@ -261,7 +252,7 @@ prompt_account() {   # prompt_account <title>
     clear
     box_title "$1"
     echo ""
-    echo -e "${GREEN}🐬  Auth DB:${NC} $DB_NAME @ $DB_HOST:$DB_PORT"
+    db_line
     echo ""
     read -p "🔹  Account name or account ID: " search
     [ -n "$search" ] || { echo -e "${RED}❌ Input must not be empty.${NC}"; return 1; }
@@ -272,12 +263,10 @@ show_edit_account_info() {
     clear
     box_title "EDIT ACCOUNT"
     echo ""
-    echo -e "${GREEN}🐬  Auth DB:${NC} $DB_NAME @ $DB_HOST:$DB_PORT"
+    db_line
     echo ""
     box_title "ACCOUNT INFORMATION"
-    echo -e " 🆔  ID:          ${GREEN}$ACC_ID${NC}"
-    echo -e " 👤  Username:    ${GREEN}$ACC_NAME${NC}"
-    echo -e " 🧩  Expansion:   ${GREEN}$ACC_EXP${NC}"
+    account_rows "$ACC_ID" "$ACC_NAME" "$ACC_EXP"
     echo -e " 🔒  Locked:      ${GREEN}${ACC_LOCKED:-0}${NC}"
     menu_footer
 }
@@ -303,14 +292,7 @@ change_expansion() {
     local new_exp
 
     echo ""
-    echo -e "${YELLOW}💡 Expansion:${NC} 0=Classic, 1=TBC, 2=WotLK"
-    read -p "🔹  New expansion [$ACC_EXP]: " new_exp
-    new_exp=${new_exp:-$ACC_EXP}
-
-    if [[ ! "$new_exp" =~ ^[0-2]$ ]]; then
-        echo -e "${RED}❌ Invalid expansion. Allowed values: 0, 1, 2.${NC}"
-        return
-    fi
+    ask_expansion new_exp "$ACC_EXP" || return
 
     if mysql_auth -e "
         UPDATE account
@@ -325,7 +307,7 @@ change_expansion() {
 }
 
 change_username() {
-    local new_name new_name_escaped name_exists
+    local new_name new_name_escaped
 
     echo ""
     read -p "🔹  New account name: " new_name
@@ -338,14 +320,7 @@ change_username() {
     _trim new_name "${new_name^^}"
     new_name_escaped=$(escape_sql "$new_name")
 
-    name_exists=$(mysql_auth -N -s -e "
-        SELECT COUNT(*)
-        FROM account
-        WHERE username='$new_name_escaped'
-          AND id<>$ACC_ID;
-    ")
-
-    if [ "$name_exists" -gt 0 ]; then
+    if sql_exists "account WHERE username='$new_name_escaped' AND id<>$ACC_ID"; then
         echo -e "${RED}❌ Account name already exists:${NC} $new_name"
         return
     fi
@@ -467,13 +442,11 @@ set_gm_level() {
 set_gm_level_flow() {
     local gm_level realm_id realm_label
     prompt_account "SET GM LEVEL" || return 1
-    local account_id="$ACC_ID" account_name="$ACC_NAME" account_expansion="$ACC_EXP"
+    local account_id="$ACC_ID" account_name="$ACC_NAME"
 
     echo ""
     box_title "ACCOUNT FOUND"
-    echo -e " 🆔  ID:          ${GREEN}$account_id${NC}"
-    echo -e " 👤  Username:    ${GREEN}$account_name${NC}"
-    echo -e " 🧩  Expansion:   ${GREEN}$account_expansion${NC}"
+    account_rows "$ACC_ID" "$ACC_NAME" "$ACC_EXP"
     echo -e " 👑  GM status:"
     show_account_gm_status "$account_id"
     menu_footer
@@ -678,8 +651,7 @@ set_account_auto_increment() {
     echo "   and automatically created accounts to start at 10000+."
     echo ""
 
-    read -p "🔹  New account AUTO_INCREMENT value [10000]: " startpoint
-    startpoint="${startpoint:-10000}"
+    ask_field startpoint "New account AUTO_INCREMENT value" 10000
     if [[ ! "$startpoint" =~ ^[0-9]+$ ]] || [ "$startpoint" -lt 1 ]; then
         echo -e "${RED}❌ Invalid value:${NC} $startpoint"
         return 1
@@ -1006,7 +978,7 @@ realmlist_menu() {
 
         box_title "AZEROTHCORE REALMLIST MANAGER"
         echo ""
-        echo -e "${GREEN}✅ Auth database:${NC} $DB_NAME @ $DB_HOST:$DB_PORT"
+        db_line
         echo ""
         echo "What do you want to do?"
         echo "--------------------------------------------------"
@@ -1102,7 +1074,7 @@ list_motds() {
 validate_realm_id() {   # validate_realm_id <id>
     [[ "$1" =~ ^-?[0-9]+$ ]] || { echo -e "${RED}❌ Invalid realm ID.${NC}"; return 1; }
     [ "$1" = "-1" ] && return 0
-    [ "$(mysql_auth -N -s -e "SELECT COUNT(*) FROM realmlist WHERE id=$1;")" -gt 0 ] 2>/dev/null \
+    sql_exists "realmlist WHERE id=$1" \
         || { echo -e "${RED}❌ Realm ID does not exist:${NC} $1"; return 1; }
 }
 
@@ -1117,8 +1089,8 @@ get_current_motd() {
     "
 }
 
-read_motd_manual() {
-    local motd_text=""
+read_motd_manual() {   # read_motd_manual <var>
+    local line text=""
 
     echo ""
     echo "Enter MOTD text. Multiple lines are supported."
@@ -1128,27 +1100,19 @@ read_motd_manual() {
 
     while IFS= read -r line; do
         [ "$line" = "." ] && break
-        motd_text+="$line"$'\n'
+        text+="$line"$'\n'
     done
 
-    MOTD_TEXT_RESULT="$motd_text"
+    printf -v "$1" '%s' "$text"
 }
 
-read_motd_nano() {
-    local realm_id="$1"
-    local tmp_file
-    local current_text
-
-    tmp_file=$(mktemp)
-    current_text=$(get_current_motd "$realm_id")
-
-    printf "%s" "$current_text" > "$tmp_file"
-
-    "$EDITOR" "$tmp_file" < /dev/tty > /dev/tty
-
-    MOTD_TEXT_RESULT=$(cat "$tmp_file")
-
-    rm -f "$tmp_file"
+read_motd_nano() {   # read_motd_nano <var> <realm-id>
+    local tmp
+    tmp=$(mktemp)
+    printf '%s' "$(get_current_motd "$2")" > "$tmp"
+    "$EDITOR" "$tmp" < /dev/tty > /dev/tty
+    printf -v "$1" '%s' "$(<"$tmp")"
+    rm -f "$tmp"
 }
 
 save_motd() {
@@ -1204,19 +1168,9 @@ edit_motd() {
     read -p "Select option [2]: " input_mode
     input_mode=${input_mode:-2}
 
-    MOTD_TEXT_RESULT=""
-
     case "$input_mode" in
-        1)
-            read_motd_manual
-            motd_text="$MOTD_TEXT_RESULT"
-            ;;
-
-        2)
-            read_motd_nano "$realm_id"
-            motd_text="$MOTD_TEXT_RESULT"
-            ;;
-
+        1) read_motd_manual motd_text ;;
+        2) read_motd_nano motd_text "$realm_id" ;;
         *)
             echo -e "${RED}❌ Invalid input mode.${NC}"
             return
@@ -1241,7 +1195,6 @@ edit_motd() {
 
 delete_motd() {
     local realm_id
-    local motd_exists
 
     clear
 
@@ -1259,9 +1212,7 @@ delete_motd() {
     fi
     validate_realm_id "$realm_id" || return
 
-    motd_exists=$(mysql_auth -N -s -e "SELECT COUNT(*) FROM motd WHERE realmid=$realm_id;")
-
-    if [ "$motd_exists" -eq 0 ]; then
+    if ! sql_exists "motd WHERE realmid=$realm_id"; then
         echo -e "${YELLOW}ℹ️  No MOTD entry found for realm ID:${NC} $realm_id"
         return
     fi
@@ -1284,7 +1235,7 @@ motd_menu() {
         clear
 
         box_title "AZEROTHCORE MOTD MANAGER"
-        echo -e "${GREEN}🐬  Auth DB:${NC} $DB_NAME @ $DB_HOST:$DB_PORT"
+        db_line
         echo "--------------------------------------------------"
         echo -e "  ${GREEN}[1]${NC} Show MOTD entries"
         echo -e "  ${GREEN}[2]${NC} Add or edit MOTD"
@@ -1313,7 +1264,7 @@ while true; do
 
     box_title "AZEROTHCORE REALMLIST & MOTD MANAGER"
     echo ""
-    echo -e "${GREEN}✅ Auth database:${NC} $DB_NAME @ $DB_HOST:$DB_PORT"
+    db_line
     echo ""
     echo "What do you want to manage?"
     echo "--------------------------------------------------"

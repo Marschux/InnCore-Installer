@@ -126,18 +126,12 @@ ask_install_control() {
         y|Y|j|J) INSTALL_CONTROL=1 ;;
         *) INSTALL_CONTROL=0; return ;;
     esac
-    case "$role" in
-        auth|both)
-            read -rp "Installation path for auth Control [/opt/acore-auth-control]: " CONTROL_AUTH_TARGET
-            CONTROL_AUTH_TARGET=${CONTROL_AUTH_TARGET:-/opt/acore-auth-control}
-            ;;
-    esac
-    case "$role" in
-        world|both)
-            read -rp "Installation path for world Control [/opt/acore-world-control]: " CONTROL_WORLD_TARGET
-            CONTROL_WORLD_TARGET=${CONTROL_WORLD_TARGET:-/opt/acore-world-control}
-            ;;
-    esac
+    local r v
+    for r in auth world; do
+        [ "$role" = "$r" ] || [ "$role" = both ] || continue
+        read -rp "Installation path for $r Control [/opt/acore-$r-control]: " v
+        printf -v "CONTROL_${r^^}_TARGET" '%s' "${v:-/opt/acore-$r-control}"
+    done
 }
 
 offer_control_installation() {
@@ -147,15 +141,11 @@ offer_control_installation() {
         return
     fi
     step "Install Control menu"
-    case "${CONTROL_ROLE:-}" in
-        auth)  install_control_role auth "${CONTROL_AUTH_TARGET:-/opt/acore-auth-control}" "$AUTH_DIR" "$AUTH_OWNER" ;;
-        world) install_control_role world "${CONTROL_WORLD_TARGET:-/opt/acore-world-control}" "$WORLD_DIR" "$WORLD_OWNER" ;;
-        both)
-            install_control_role auth  "${CONTROL_AUTH_TARGET:-/opt/acore-auth-control}"  "$AUTH_DIR"  "$AUTH_OWNER"
-            install_control_role world "${CONTROL_WORLD_TARGET:-/opt/acore-world-control}" "$WORLD_DIR" "$WORLD_OWNER"
-            ;;
-        *) warn "Could not determine the Control role."; return 1 ;;
-    esac
+    # ask_install_control set the matching CONTROL_*_TARGET(s) for this role.
+    case "$CONTROL_ROLE" in auth|both)
+        install_control_role auth "$CONTROL_AUTH_TARGET" "$AUTH_DIR" "$AUTH_OWNER" ;; esac
+    case "$CONTROL_ROLE" in world|both)
+        install_control_role world "$CONTROL_WORLD_TARGET" "$WORLD_DIR" "$WORLD_OWNER" ;; esac
     echo "Usage: run authmenu or worldmenu."
 }
 
@@ -292,12 +282,8 @@ install_control_standalone() {
 }
 
 install_control_standalone_role() {
-    local role="$1" target acore owner default_dir default_acore default_owner
-    if [ "$role" = auth ]; then
-        default_dir=/opt/acore-auth-control; default_acore=/opt/ac-authserver
-    else
-        default_dir=/opt/acore-world-control; default_acore=/opt/ac-worldserver
-    fi
+    local role="$1" target acore owner default_owner
+    local default_dir="/opt/acore-$role-control" default_acore="/opt/ac-${role}server"
     default_owner="$(stat -c '%U' "$default_acore" 2>/dev/null || id -un)"
     read -rp "Installation path for $role Control [$default_dir]: " target
     read -rp "AzerothCore path for the ${role^}server [$default_acore]: " acore
@@ -555,10 +541,13 @@ collect_database_password() {
 # picks any other password. Rewrite field 4 of each DatabaseInfo line; the '^'
 # anchor skips the commented example lines, [A-Za-z]*DatabaseInfo covers
 # Login/World/Character.
+# <s> escaped for the replacement side of a sed s command delimited by \x1f.
+sed_repl() { local d=$'\x1f'; printf '%s' "$1" | sed "s/[&${d}\\]/\\\\&/g"; }
+
 write_conf_db_password() {   # write_conf_db_password <conf-file>
     local conf="$1" d=$'\x1f' esc
     [ -f "$conf" ] || return 0
-    esc="$(printf '%s' "$DB_PASS" | sed "s/[&${d}\\]/\\\\&/g")"
+    esc="$(sed_repl "$DB_PASS")"
     sudo sed -i -E "s${d}^([[:space:]]*[A-Za-z]*DatabaseInfo[[:space:]]*=[[:space:]]*\"[^\";]*;[^\";]*;[^\";]*;)[^\";]*${d}\\1${esc}${d}" "$conf"
 }
 
@@ -569,7 +558,7 @@ write_conf_login_db() {   # write_conf_login_db <conf-file>
     local conf="$1" d=$'\x1f' esc
     [ -f "$conf" ] || return 0
     [ -n "${AUTH_DB_HOST:-}" ] && [ "$AUTH_DB_HOST" != "127.0.0.1" ] || return 0
-    esc="$(printf '%s' "${AUTH_DB_PASS:-$DB_PASS}" | sed "s/[&${d}\\]/\\\\&/g")"
+    esc="$(sed_repl "${AUTH_DB_PASS:-$DB_PASS}")"
     sudo sed -i -E "s${d}^([[:space:]]*LoginDatabaseInfo[[:space:]]*=[[:space:]]*\")[^\";]*(;[^\";]*;[^\";]*;)[^\";]*${d}\\1${AUTH_DB_HOST}\\2${esc}${d}" "$conf"
 }
 
