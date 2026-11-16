@@ -80,10 +80,12 @@ New = n
 printf 'A = 1
 B = "x # y"
 C = 3
+Retired = 5
 ' > "$d/dst.base"
 printf 'A = 2
 B = "x # y" # mine
 C = 3
+Retired = 5
 Mine = 7
 ' > "$d/dst"
 merge_values "$d/tpl" "$d/dst" >/dev/null

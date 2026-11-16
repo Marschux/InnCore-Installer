@@ -443,12 +443,13 @@ merge_values() {   # merge_values <template> <dst>
             kept=$((kept + 1))
         fi
     done < "$tpl"
-    # Operator-added keys the template never had: keep them at the end.
+    # Operator-added keys (in neither template nor baseline): keep them at the
+    # end. A key the baseline had but the template dropped is retired: gone.
     while IFS= read -r line || [ -n "$line" ]; do
         case "$line" in ''|\#*) continue ;; esac
         _trim key "${line%%=*}"
         [ -n "$key" ] || continue
-        if [ -z "${tk[$key]:-}" ]; then
+        if [ -z "${tk[$key]:-}" ] && [ -z "${bv[$key]:-}" ]; then
             if [ "$extra" -eq 0 ]; then out+=$'\n# --- keys not in the template ---\n'; fi
             out+="$line"$'\n'; extra=$((extra + 1))
         fi
