@@ -196,9 +196,12 @@ read_login_database() { read_db_info LoginDatabaseInfo "$@"; }
 # loop over a 4000-line worldserver.conf is far slower than the grep fork).
 read_db_info() {   # read_db_info <Key> [conf]
     local key="$1" conf="${2:-}" line
-    [ -n "$conf" ] || conf="${AUTH_CONF:-}"
-    [ -n "$conf" ] || conf="${WORLD_CONF:-}"
-    [ -n "$conf" ] && [ -f "$conf" ] || return 1
+    # No conf given: the first one that exists. common.sh always sets both
+    # paths, so on a world-only box AUTH_CONF names a file that isn't there.
+    if [ -z "$conf" ]; then
+        for conf in "${AUTH_CONF:-}" "${WORLD_CONF:-}"; do [ -f "$conf" ] && break; done
+    fi
+    [ -f "$conf" ] || return 1
     line="$(grep -E "^[[:space:]]*${key}[[:space:]]*=" "$conf")" || true
     line="${line##*$'\n'}"; line="${line#*=}"; line="${line%%#*}"   # last match, RHS, no comment
     _trim line "$line"; line="${line#\"}"; line="${line%\"}"

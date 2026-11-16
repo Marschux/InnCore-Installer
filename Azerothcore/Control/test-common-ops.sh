@@ -108,6 +108,11 @@ WorldDatabaseInfo = "h;2;u;p;w"
 read_db_info LoginDatabaseInfo "$c"; chk "dbinfo rc" "$?" "0"
 chk "dbinfo fields" "$DB_HOST|$DB_PORT|$DB_USER|$DB_PASS|$DB_NAME" "10.0.0.5|3307|acore|s3cr3t|acore_auth"
 read_db_info CharacterDatabaseInfo "$c"; chk "dbinfo missing" "$?" "1"
+# no conf argument on a world-only box: AUTH_CONF is set but absent -> WORLD_CONF
+DB_HOST=""; AUTH_CONF="$SCRIPT_DIR/nope.conf" WORLD_CONF="$c" read_db_info LoginDatabaseInfo
+chk "dbinfo world fallback" "$?|$DB_HOST" "0|10.0.0.5"
+AUTH_CONF="$SCRIPT_DIR/nope.conf" WORLD_CONF="$SCRIPT_DIR/nope2.conf" read_db_info LoginDatabaseInfo
+chk "dbinfo none exists" "$?" "1"
 
 # apply_values: column-0 keys replaced (all duplicates), commented / indented
 # lines untouched, AiPlayerbot <-> Playerbots alias, placeholders and unknown
