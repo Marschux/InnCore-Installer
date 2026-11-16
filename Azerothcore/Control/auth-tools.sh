@@ -492,7 +492,7 @@ show_account_flow() {
     local row
     local id username email reg_mail joindate last_login last_ip failed_logins
     local locked lock_country online expansion mutetime mutereason totaltime
-    local ban bd ubd br bby bact
+    local ban br bby bact
 
     prompt_account "SHOW ACCOUNT" || return 1
 
@@ -552,7 +552,7 @@ show_account_flow() {
     " 2>/dev/null)
 
     if [ -n "$ban" ]; then
-        IFS=$'\t' read -r bd ubd br bby bact <<< "$ban"
+        IFS=$'\t' read -r _ _ br bby bact <<< "$ban"
         if [ "$bact" = "1" ]; then
             echo -e " 🚫  ${RED}BANNED${NC} by ${bby:-?}  -  ${br:-no reason}"
         else
