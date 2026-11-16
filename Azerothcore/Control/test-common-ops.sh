@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 #
-# Self-check for the daily-restart time maths in common-ops.sh
-# (restart_next / restart_is_skipped). No framework, no network, no server -
-# it only exercises the pure date logic that is otherwise unverifiable without
-# waiting a day for the scheduler to fire. Run: bash test-restart-schedule.sh
+# Self-check for the pure logic in common-ops.sh: the daily-restart time maths
+# (restart_next / restart_is_skipped) and the values 3-way merge (merge_values).
+# No framework, no network, no server. Run: bash test-common-ops.sh
 
 set -u
 cd "$(dirname "${BASH_SOURCE[0]}")"
@@ -65,6 +64,35 @@ restart_is_skipped 2030-03-03 00:00; chk "date not listed"    "$?" "1"
 printf 'not-a-time;x\n25:99;5\n%s;5\n' "$past" > "$RESTART_TIMES_CONF"
 : > "$RESTART_SKIP_CONF"
 chk "garbage tolerated" "$(field "$(restart_next)" 2)" "$past"
+
+# merge_values: template wins unless the operator changed a key away from the
+# baseline; extras survive at the end, comments after values are ignored.
+d="$SCRIPT_DIR/m"; mkdir -p "$d"
+printf '# head
+A = 1
+B = "x # y"  # c
+C = 3
+New = n
+' > "$d/tpl"
+printf 'A = 1
+B = "x # y"
+C = 3
+' > "$d/dst.base"
+printf 'A = 2
+B = "x # y" # mine
+C = 3
+Mine = 7
+' > "$d/dst"
+merge_values "$d/tpl" "$d/dst" >/dev/null
+chk "merge result" "$(cat "$d/dst")" "$(printf '# head
+A = 2
+B = "x # y"  # c
+C = 3
+New = n
+
+# --- keys not in the template ---
+Mine = 7')"
+chk "merge base" "$(cat "$d/dst.base")" "$(cat "$d/tpl")"
 
 echo "---"
 echo "pass=$pass fail=$fail"

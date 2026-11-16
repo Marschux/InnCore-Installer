@@ -324,7 +324,7 @@ restart_is_skipped() {   # restart_is_skipped <YYYY-MM-DD> <HH:MM>
     local d="$1" t="$2" ed et
     [ -s "$RESTART_SKIP_CONF" ] || return 1
     while IFS=';' read -r ed et || [ -n "$ed" ]; do
-        ed="$(printf '%s' "$ed" | xargs)"; et="$(printf '%s' "$et" | xargs)"
+        _trim ed "$ed"; _trim et "$et"
         [ -n "$ed" ] || continue
         [ "${ed#\#}" = "$ed" ] || continue
         [ "$ed" = "$d" ] || continue
@@ -340,7 +340,7 @@ restart_next() {
     local now next=0 nt="" nl="" t l day dd ce
     now="$(date +%s)"
     while IFS=';' read -r t l || [ -n "$t" ]; do
-        t="$(printf '%s' "$t" | xargs)"; l="$(printf '%s' "$l" | xargs)"
+        _trim t "$t"; _trim l "$l"
         [[ "$t" =~ ^([01][0-9]|2[0-3]):[0-5][0-9]$ ]] || continue
         [[ "$l" =~ ^[0-9]+$ ]] || continue
         for day in $(seq 0 60); do
@@ -359,54 +359,75 @@ restart_next() {
 # The RHS of a "key = value" line: everything after the first '=', with a
 # trailing " # comment" and surrounding whitespace stripped (space-guarded so a
 # '#' inside a quoted value survives).
-_val_of() { printf '%s' "${1#*=}" | sed -E 's/[[:space:]]+#.*$//; s/^[[:space:]]+//; s/[[:space:]]+$//'; }
-_key_line() { grep -E "^[[:space:]]*$1[[:space:]]*=" "$2" 2>/dev/null | tail -1; }
+_val_of() { local _vo="${2#*=}"; _trim "$1" "${_vo%%[[:space:]]#*}"; }   # _val_of <var> <line>
+
+# Strip surrounding whitespace into <var>. No subshell: these run per line.
+_trim() {   # _trim <var> <string>
+    local _ts="$2"
+    _ts="${_ts#"${_ts%%[![:space:]]*}"}"
+    _ts="${_ts%"${_ts##*[![:space:]]}"}"
+    printf -v "$1" '%s' "$_ts"
+}
+
+# key -> "x<value>" for every "key = value" line of <file>, last one wins. The
+# "x" marks presence, so a key with an empty value still counts as set.
+_load_values() {   # _load_values <assoc-name> <file>
+    local -n _lv="$1"
+    local line k v
+    [ -f "$2" ] || return 0
+    while IFS= read -r line || [ -n "$line" ]; do
+        case "$line" in ''|\#*) continue ;; esac
+        [[ "$line" == *=* ]] || continue
+        _trim k "${line%%=*}"; [ -n "$k" ] || continue
+        _val_of v "$line"; _lv[$k]="x$v"
+    done < "$2"
+}
 
 # 3-way merge: <template> is authoritative for layout, comments and defaults;
 # <dst> keeps the operator's value for any key they changed away from the
 # baseline (<dst>.base, the template as it was at the last merge). New keys
 # appear, retired keys vanish, operator-added extras are kept at the end.
 merge_values() {   # merge_values <template> <dst>
-    local tpl="$1" dst="$2" out line key tval bval dval kept=0 base
-    base="${dst}.base"
+    local tpl="$1" dst="$2" base="${2}.base" out="" line key tval bval dval kept=0 extra=0
+    local -A bv=() dv=() tk=()
     if [ ! -f "$dst" ]; then
         install -m 0644 "$tpl" "$dst"; cp "$tpl" "$base"
         echo "  + $(basename "$dst") (new)"; return 0
     fi
-    out="$(mktemp)" || return 1
+    _load_values bv "$base"
+    _load_values dv "$dst"
     while IFS= read -r line || [ -n "$line" ]; do
         case "$line" in
-            ''|\#*) printf '%s\n' "$line" >> "$out"; continue ;;
+            ''|\#*) out+="$line"$'\n'; continue ;;
         esac
-        key="$(printf '%s' "${line%%=*}" | xargs)"
-        [ -n "$key" ] || { printf '%s\n' "$line" >> "$out"; continue; }
-        tval="$(_val_of "$line")"
-        bval="$(_key_line "$key" "$base")"; [ -n "$bval" ] && bval="$(_val_of "$bval")"
-        dval="$(_key_line "$key" "$dst")"
+        _trim key "${line%%=*}"
+        [ -n "$key" ] || { out+="$line"$'\n'; continue; }
+        [[ "$line" == *=* ]] && tk[$key]=1
+        dval="${dv[$key]:-}"
         if [ -z "$dval" ]; then
-            printf '%s\n' "$line" >> "$out"                 # brand-new key
+            out+="$line"$'\n'                               # brand-new key
+            continue
+        fi
+        _val_of tval "$line"
+        dval="${dval#x}"; bval="${bv[$key]:-}"; bval="${bval#x}"
+        if [ "$dval" = "$bval" ] || [ "$dval" = "$tval" ]; then
+            out+="$line"$'\n'                               # untouched -> take template
         else
-            dval="$(_val_of "$dval")"
-            if [ "$dval" = "$bval" ] || [ "$dval" = "$tval" ]; then
-                printf '%s\n' "$line" >> "$out"             # untouched -> take template
-            else
-                printf '%s = %s\n' "$key" "$dval" >> "$out" # operator-tuned -> keep value
-                kept=$((kept + 1))
-            fi
+            out+="$key = $dval"$'\n'                        # operator-tuned -> keep value
+            kept=$((kept + 1))
         fi
     done < "$tpl"
     # Operator-added keys the template never had: keep them at the end.
-    local extra=0
     while IFS= read -r line || [ -n "$line" ]; do
         case "$line" in ''|\#*) continue ;; esac
-        key="$(printf '%s' "${line%%=*}" | xargs)"
+        _trim key "${line%%=*}"
         [ -n "$key" ] || continue
-        if [ -z "$(_key_line "$key" "$tpl")" ]; then
-            if [ "$extra" -eq 0 ]; then printf '\n# --- keys not in the template ---\n' >> "$out"; fi
-            printf '%s\n' "$line" >> "$out"; extra=$((extra + 1))
+        if [ -z "${tk[$key]:-}" ]; then
+            if [ "$extra" -eq 0 ]; then out+=$'\n# --- keys not in the template ---\n'; fi
+            out+="$line"$'\n'; extra=$((extra + 1))
         fi
     done < "$dst"
-    cat "$out" > "$dst"; rm -f "$out"
+    printf '%s' "$out" > "$dst"
     cp "$tpl" "$base"
     local more=""; [ "$extra" -gt 0 ] && more=", $extra extra"
     echo "  ~ $(basename "$dst") merged (kept $kept operator value(s)$more)"
@@ -428,12 +449,12 @@ apply_values() {
     echo ""
 
     while IFS='=' read -r key value || [ -n "$key" ]; do
-        key="$(echo "$key" | xargs 2>/dev/null)"
+        _trim key "$key"
         [[ -z "$key" || "$key" == \#* ]] && continue
         # Value is written verbatim: the summary file is the source of truth for
         # quoting. Only strip a trailing " # comment" (space-guarded so a '#'
         # inside a quoted value or password survives) and surrounding whitespace.
-        value="$(_val_of "=$value")"
+        _val_of value "=$value"
         # Guard against applying an unedited summary: the shipped *DatabaseInfo
         # lines carry a literal "password" placeholder, and writing that over a
         # working config silently breaks every DB connection.
