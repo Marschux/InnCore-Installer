@@ -44,7 +44,7 @@ git_update() {   # git_update <repo-dir>
 # Pulls first when the checkout is a git repo. Fails loudly with the fix when the
 # checkout is not readable by the server user (e.g. cloned into a 700 home).
 update_control_scripts() {   # update_control_scripts <menu-basename>
-    local src="$CONTROL_SOURCE_DIR" f
+    local src="$CONTROL_SOURCE_DIR"
     if [ "${MENU_RUNNING:-0}" = 1 ]; then submenu_title "⬇️  UPDATE CONTROL SCRIPTS" "$COLOR_CONFIG"; fi
     if [ ! -r "$src/common.sh" ]; then
         echo "Cannot read the repo checkout at:"
@@ -138,8 +138,7 @@ safe_build() {   # safe_build <build-dir> <repo-dir> <apps-build> <scripts>
             || { echo "CMake configure failed."; return 1; }
     fi
     (cd "$dir" && make -j "$(nproc)" && make install) || return 1
-    if [ -n "$repo" ]; then gitq "$repo" rev-parse HEAD 2>/dev/null > "$(build_state_file "$repo")" || true; fi
-    return 0
+    gitq "$repo" rev-parse HEAD 2>/dev/null > "$(build_state_file "$repo")" || true
 }
 
 # Wipe only <acore-dir>/build, after a typed confirmation. Source and Control
@@ -214,36 +213,42 @@ read_db_info() {   # read_db_info <Key> [conf]
 # LoginDatabaseInfo's host:port takes TCP, bounded below the unit's
 # TimeoutStartSec (180 s). bash /dev/tcp, so no netcat needed.
 wait_for_login_db() {   # wait_for_login_db [max_seconds]
-    local max="${1:-150}" end
+    local max="${1:-150}" end waited=0
     read_login_database "${WORLD_CONF:-}" || return 0   # unknown: start as before
     end=$((SECONDS + max))
-    timeout 2 bash -c ">/dev/tcp/$DB_HOST/$DB_PORT" 2>/dev/null && return 0
-    echo -e "${CYAN}⏳  Waiting for the auth DB at $DB_HOST:$DB_PORT (max ${max}s)...${RESET}"
-    while [ "$SECONDS" -lt "$end" ]; do
-        sleep 3
-        if timeout 2 bash -c ">/dev/tcp/$DB_HOST/$DB_PORT" 2>/dev/null; then
-            echo -e "${GREEN}✅  Auth DB reachable.${RESET}"
+    until timeout 2 bash -c ">/dev/tcp/$DB_HOST/$DB_PORT" 2>/dev/null; do
+        if [ "$waited" = 0 ]; then
+            echo -e "${CYAN}⏳  Waiting for the auth DB at $DB_HOST:$DB_PORT (max ${max}s)...${RESET}"
+            waited=1
+        fi
+        if [ "$SECONDS" -ge "$end" ]; then
+            echo -e "${YELLOW}⚠️  Auth DB still unreachable after ${max}s - starting anyway.${RESET}"
             return 0
         fi
+        sleep 3
     done
-    echo -e "${YELLOW}⚠️  Auth DB still unreachable after ${max}s - starting anyway.${RESET}"
+    [ "$waited" = 0 ] || echo -e "${GREEN}✅  Auth DB reachable.${RESET}"
 }
 
-mysql_auth() {
-    read_login_database || { echo "Could not read LoginDatabaseInfo."; return 1; }
-    MYSQL_PWD="$DB_PASS" mysql -h "$DB_HOST" -P "$DB_PORT" -u "$DB_USER" "$DB_NAME" "$@"
+# mysql as the user of any *DatabaseInfo line; conf as in read_db_info.
+mysql_db() {   # mysql_db <Key> <conf-or-empty> [mysql args...]
+    read_db_info "$1" "$2" || { echo "Could not read $1."; return 1; }
+    MYSQL_PWD="$DB_PASS" mysql -h "$DB_HOST" -P "$DB_PORT" -u "$DB_USER" "$DB_NAME" "${@:3}"
 }
+mysql_auth() { mysql_db LoginDatabaseInfo "" "$@"; }
+
+escape_sql() { local q="'"; printf '%s' "${1//$q/$q$q}"; }   # for '...' SQL literals
 
 # Delete one account and its account_access (GM) rows after a typed DELETE.
 # Lives here, not in auth-tools.sh: a world-only box has no auth-tools but its
 # menu offers the same action. Without args it asks for a name or ID first.
 delete_account() {   # delete_account [<id> <name>]
-    local id="${1:-}" name="${2:-}" in where row q="'"
+    local id="${1:-}" name="${2:-}" in where row
     if [ -z "$id" ]; then
         read -rp "🔹  Account name or ID to delete: " in
         _trim in "${in^^}"
         [ -n "$in" ] || { echo -e "${RED}❌ Input must not be empty.${RESET}"; return 1; }
-        if [[ "$in" =~ ^[0-9]+$ ]]; then where="id=$in"; else where="username='${in//$q/$q$q}'"; fi
+        if [[ "$in" =~ ^[0-9]+$ ]]; then where="id=$in"; else where="username='$(escape_sql "$in")'"; fi
         row="$(mysql_auth -N -s -e "SELECT id, username FROM account WHERE $where LIMIT 1;")" || return 1
         [ -n "$row" ] || { echo -e "${RED}❌ Account not found.${RESET}"; return 1; }
         IFS=$'\t' read -r id name <<< "$row"
@@ -265,13 +270,7 @@ delete_account() {   # delete_account [<id> <name>]
 # Shared by auth and world; only the unit name, description and wrapper differ.
 autostart_toggle() {   # autostart_toggle <service> <description> <menu-wrapper> [after-units]
     local svc="$1" desc="$2" wrapper="$3" after="${4:-network-online.target mysql.service mysqld.service}" c state
-    if systemctl is-enabled --quiet "$svc" 2>/dev/null; then
-        state="${GREEN}ENABLED${RESET}  - the server starts automatically on LXC boot"
-    elif [ -f "/etc/systemd/system/$svc" ]; then
-        state="${YELLOW}unit present but DISABLED${RESET}"
-    else
-        state="${RED}DISABLED${RESET} - no automatic start on boot"
-    fi
+    autostart_state state "$svc"
     submenu_title "🚀  AUTOSTART" "$COLOR_TOOLS"
     echo -e "  Service:  ${CYAN}${svc}${RESET}"
     echo -e "  Status:   ${state}"

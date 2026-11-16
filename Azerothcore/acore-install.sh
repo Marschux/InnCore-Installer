@@ -134,17 +134,16 @@ ask_install_control() {
     done
 }
 
-offer_control_installation() {
-    [ "${SKIP_CONTROL_PROMPT:-0}" = 1 ] && return
+offer_control_installation() {   # offer_control_installation auth|world|both
     if [ "${INSTALL_CONTROL:-0}" != 1 ]; then
         echo "Control menu skipped. It can be installed later via menu item 5."
         return
     fi
     step "Install Control menu"
     # ask_install_control set the matching CONTROL_*_TARGET(s) for this role.
-    case "$CONTROL_ROLE" in auth|both)
+    case "$1" in auth|both)
         install_control_role auth "$CONTROL_AUTH_TARGET" "$AUTH_DIR" "$AUTH_OWNER" ;; esac
-    case "$CONTROL_ROLE" in world|both)
+    case "$1" in world|both)
         install_control_role world "$CONTROL_WORLD_TARGET" "$WORLD_DIR" "$WORLD_OWNER" ;; esac
     echo "Usage: run authmenu or worldmenu."
 }
@@ -363,10 +362,6 @@ generate_mysql_tuning() {
             TMP_MB=128
             MAX_CONNECTIONS=$((160 + CPU_CORES * 25))
             ;;
-        *)
-            warn "Unknown MySQL tuning profile: $PROFILE"
-            exit 1
-            ;;
     esac
 
     BUFFER_MB=$((RAM_MB * BUFFER_PERCENT / 100))
@@ -458,7 +453,7 @@ collect_basic_inputs() {
 
     read -rp "Timezone [Europe/Berlin]: " SERVER_TIMEZONE
     SERVER_TIMEZONE=${SERVER_TIMEZONE:-Europe/Berlin}
-    if [ -z "$SERVER_TIMEZONE" ] || [ ! -f "/usr/share/zoneinfo/$SERVER_TIMEZONE" ]; then
+    if [ ! -f "/usr/share/zoneinfo/$SERVER_TIMEZONE" ]; then
         warn "Unknown timezone: $SERVER_TIMEZONE"
         exit 1
     fi
@@ -574,12 +569,11 @@ disable_log_bin
 mysql_native_password   = ON
 EOF
     echo "MySQL config written: /etc/mysql/mysql.conf.d/acore_limits.cnf"
-    sudo systemctl restart mysql
-    echo "MySQL restarted."
 
     step "Automatic MySQL tuning"
     generate_mysql_tuning "$profile"
-    sudo systemctl restart mysql
+    sudo systemctl restart mysql   # one restart picks up both files
+    echo "MySQL restarted."
 
     step "Create databases and MySQL user"
     # CREATE USER IF NOT EXISTS does NOT touch the password of an existing user,
@@ -662,9 +656,6 @@ run_basic_system() {
 
     ensure_hostname_resolution
 
-    if ! timedatectl list-timezones | grep -Fxq "$SERVER_TIMEZONE"; then
-        warn "Unknown timezone: $SERVER_TIMEZONE"; exit 1
-    fi
     timedatectl set-timezone "$SERVER_TIMEZONE"
     step "3. Set up administration account"
     echo "The administration account is created or updated"
@@ -718,8 +709,11 @@ EOF
 STEP_N=0
 nstep() { STEP_N=$((STEP_N + 1)); step "$STEP_N. $1"; }
 
-run_server() {   # run_server auth|world
-    local role="$1" dir owner branch repo apps scripts disk etc
+# <profile> is the MySQL tuning profile ("both" from Bothserver, which then
+# offers Control itself). <shared-done>=1: a previous run_server on this box
+# already did the apt upgrade, install-deps and the MySQL setup.
+run_server() {   # run_server auth|world [profile] [shared-done]
+    local role="$1" profile="${2:-$1}" shared="${3:-0}" dir owner branch repo apps scripts disk etc
     if [ "$role" = auth ]; then
         dir="$AUTH_DIR" owner="$AUTH_OWNER" branch="$AUTH_BRANCH" disk=20
         repo=https://github.com/azerothcore/azerothcore-wotlk.git apps=auth-only scripts=none
@@ -732,7 +726,7 @@ run_server() {   # run_server auth|world
 
     nstep "Update system packages"
     check_disk "$dir" "$disk"
-    apt_get update && apt_get full-upgrade -y
+    [ "$shared" = 1 ] || { apt_get update && apt_get full-upgrade -y; }
 
     nstep "Clone source code"
     sudo mkdir -p "$dir"
@@ -744,13 +738,17 @@ run_server() {   # run_server auth|world
     fi
 
     nstep "Install dependencies"
-    OSDISTRO="$(. /etc/os-release && echo "$ID")"
-    echo "Detected distro: $OSDISTRO"
-    sed -i "s/^#\s*OSDISTRO=.*/OSDISTRO=\"$OSDISTRO\"/" "$dir/conf/dist/config.sh"
-    run_install_deps
-    # OSDISTRO is only needed by install-deps; restore the tracked file so
-    # later source updates via the menu stay a clean fast-forward.
-    git -C "$dir" -c safe.directory='*' checkout -- conf/dist/config.sh || true
+    if [ "$shared" = 1 ]; then
+        echo "Already installed by the previous build on this box."
+    else
+        OSDISTRO="$(. /etc/os-release && echo "$ID")"
+        echo "Detected distro: $OSDISTRO"
+        sed -i "s/^#\s*OSDISTRO=.*/OSDISTRO=\"$OSDISTRO\"/" "$dir/conf/dist/config.sh"
+        run_install_deps
+        # OSDISTRO is only needed by install-deps; restore the tracked file so
+        # later source updates via the menu stay a clean fast-forward.
+        git -C "$dir" -c safe.directory='*' checkout -- conf/dist/config.sh || true
+    fi
 
     nstep "Create and enter the build directory"
     mkdir -p build
@@ -790,27 +788,23 @@ run_server() {   # run_server auth|world
     # must be able to write configs, backups and git pulls here.
     sudo chown -R "$owner:$owner" "$dir"
 
-    setup_database "${TUNING_PROFILE:-$role}"
+    [ "$shared" = 1 ] || setup_database "$profile"
 
     nstep "Final step"
     echo "The ${role^}server build and database setup are complete."
     echo "Management scripts and the final '${role}menu' start flow are handled separately."
-    CONTROL_ROLE=$role offer_control_installation
+    [ "$profile" = both ] || offer_control_installation "$role"
 }
 
 ################################################################################
 # 4. BOTHSERVER (Auth + World on one LXC)
 ################################################################################
 run_bothserver() {
-    TUNING_PROFILE=both
-    SKIP_CONTROL_PROMPT=1
     step "Bothserver: Authserver"
-    run_server auth
+    run_server auth both
     step "Bothserver: Worldserver"
-    run_server world
-    unset SKIP_CONTROL_PROMPT
-    unset TUNING_PROFILE
-    CONTROL_ROLE=both offer_control_installation
+    run_server world both 1
+    offer_control_installation both
 }
 
 
@@ -853,12 +847,12 @@ run_mysql_only() {
     echo "  1) Auth"
     echo "  2) World"
     echo "  3) Both"
-    local profile_choice
-    read -rp "Profile [1-3]: " profile_choice
-    case "$profile_choice" in
-        1) TUNING_PROFILE=auth ;;
-        2) TUNING_PROFILE=world ;;
-        3) TUNING_PROFILE=both ;;
+    local profile
+    read -rp "Profile [1-3]: " profile
+    case "$profile" in
+        1) profile=auth ;;
+        2) profile=world ;;
+        3) profile=both ;;
         *) warn "Invalid choice."; exit 1 ;;
     esac
     collect_database_password
@@ -867,7 +861,7 @@ run_mysql_only() {
     apt_get install -y mysql-server libmysqlclient-dev
     sudo systemctl enable --now mysql
 
-    setup_database "$TUNING_PROFILE"
+    setup_database "$profile"
     unset DB_PASS
     step "Final step"
     echo "MySQL has been installed and configured."

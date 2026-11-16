@@ -34,7 +34,6 @@ run_manager() {   # run_manager <script-basename> [args...]
         wait_for_user
         return 1
     fi
-    [ -x "$s" ] || chmod +x "$s" 2>/dev/null
     "$s" "${@:2}"
 }
 account_menu() { run_manager auth-tools.sh accounts; }
@@ -86,9 +85,7 @@ realm_header() {
 _realm_header_query() {
     read_login_database >/dev/null 2>&1 || return 0
     local rows id name address port icon flag tz sec
-    rows="$(mysql_auth -N -s -e "SELECT id, name, address, port,
-                CASE icon WHEN 1 THEN 'PvP' WHEN 6 THEN 'RP' WHEN 8 THEN 'RP PvP' ELSE 'Normal' END,
-                flag,
+    rows="$(mysql_auth -N -s -e "SELECT id, name, address, port, icon, flag,
                 CASE timezone WHEN 1 THEN 'Dev' WHEN 2 THEN 'US' WHEN 3 THEN 'Oceanic'
                               WHEN 4 THEN 'LatAm' WHEN 6 THEN 'Korea' WHEN 8 THEN 'English'
                               WHEN 9 THEN 'German' WHEN 10 THEN 'French' WHEN 11 THEN 'Spanish'
@@ -106,8 +103,9 @@ _realm_header_query() {
     # escape literally.
     local tc fc sc idc namec addrc iconc flagc tzc secc
     while IFS=$'\t' read -r id name address port icon flag tz sec; do
-        case "$icon" in PvP) tc=$RED ;; RP) tc=$BLUE ;; "RP PvP") tc=$PURPLE ;; *) tc=$GREEN ;; esac
-        flag="$(realm_flag_names "$flag")"
+        realm_type_name icon "$icon"
+        case "$icon" in PvP) tc=$RED ;; RP) tc=$BLUE ;; "RP PvP") tc=$PURPLE ;; Unknown) tc=$DIM ;; *) tc=$GREEN ;; esac
+        realm_flag_names flag "$flag"
         case "$flag" in Online) fc=$GREEN ;; *Offline*|*Invalid*) fc=$RED ;; *Recommended*) fc=$GOLD ;; *New*) fc=$CYAN ;; *) fc=$DIM ;; esac
         case "$sec" in Player) sc=$GREEN ;; Moderator|Gamemaster) sc=$GOLD ;; Administrator|Console) sc=$RED ;; *) sc=$DIM ;; esac
         printf -v idc   '%-3s'     "$id"

@@ -52,7 +52,6 @@ restart_sched_reload() {
 
 restart_sched_enable() {
     [ -s "$RESTART_TIMES_CONF" ] || { echo "Add at least one restart time first."; return 1; }
-    [ -x "$RESTART_RUNNER" ] || chmod +x "$RESTART_RUNNER" 2>/dev/null
     sudo tee "/etc/systemd/system/$WORLD_TIMER_NAME" >/dev/null <<EOF
 [Unit]
 Description=AzerothCore worldserver daily restart scheduler
@@ -123,8 +122,11 @@ restart_timer() {
                else echo "Invalid time or lead."; fi
                sleep 1 ;;
             2) read -rp "Time HH:MM to delete: " t
-               drop_lines "$f" "^${t};"
-               echo "Removed $t."; restart_sched_reload; sleep 1 ;;
+               if [[ "$t" =~ ^([01][0-9]|2[0-3]):[0-5][0-9]$ ]]; then
+                   drop_lines "$f" "^${t};"
+                   echo "Removed $t."; restart_sched_reload
+               else echo "Invalid time."; fi
+               sleep 1 ;;
             3) read -rp "Date YYYY-MM-DD: " d; read -rp "Time HH:MM (blank = whole day): " t
                if date -d "$d" >/dev/null 2>&1; then
                    [ -n "$t" ] && echo "${d};${t}" >> "$s" || echo "$d" >> "$s"
@@ -148,7 +150,7 @@ char_db_console() {
     read_db_info CharacterDatabaseInfo "$WORLD_CONF" \
         || { echo "Could not read CharacterDatabaseInfo from $WORLD_CONF."; return 1; }
     echo "Opening $DB_NAME @ $DB_HOST:$DB_PORT  (Ctrl-D to exit)"
-    MYSQL_PWD="$DB_PASS" mysql -h "$DB_HOST" -P "$DB_PORT" -u "$DB_USER" "$DB_NAME"
+    mysql_db CharacterDatabaseInfo "$WORLD_CONF"
 }
 
 config_menu() {

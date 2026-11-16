@@ -151,19 +151,25 @@ run_step() {   # run_step "<script or function>" [args...]
 # realmlist.flag is a bitmask: decode every set bit (34 = offline + new).
 # Bit 2 is the worldserver's own online/offline marker, not something the
 # operator sets: it only shows when no other flag is set, so 34 reads "New".
-realm_flag_names() {   # realm_flag_names <flag>
-    local f="$1" out="" pair bit name
-    if ! [[ "$f" =~ ^[0-9]+$ ]]; then echo "$f"; return 0; fi
-    for pair in 1:Invalid 4:Build 8:Medium 16:Medium 32:New 64:Recommended 128:Full; do
-        bit=${pair%%:*}; name=${pair#*:}
-        if (( f & bit )); then out+="+$name"; fi
+# Into <var>, no subshell: these run once per realm row.
+realm_flag_names() {   # realm_flag_names <var> <flag>
+    local _f="$2" _out="" _p
+    if ! [[ "$_f" =~ ^[0-9]+$ ]]; then printf -v "$1" '%s' "$_f"; return 0; fi
+    for _p in 1:Invalid 4:Build 8:Medium 16:Medium 32:New 64:Recommended 128:Full; do
+        if (( _f & ${_p%%:*} )); then _out+="+${_p#*:}"; fi
     done
-    if (( f & ~255 )); then out+="+$(( f & ~255 ))"; fi
-    if [ -z "$out" ]; then
-        if (( f & 2 )); then echo "Offline"; else echo "Online"; fi
-        return 0
+    if (( _f & ~255 )); then _out+="+$(( _f & ~255 ))"; fi
+    if [ -z "$_out" ]; then
+        if (( _f & 2 )); then _out=Offline; else _out=Online; fi
     fi
-    echo "${out#+}"
+    printf -v "$1" '%s' "${_out#+}"
+}
+
+# realmlist.icon -> realm type, into <var>.
+realm_type_name() {   # realm_type_name <var> <icon>
+    local _t
+    case "$2" in 0|4) _t=Normal ;; 1) _t=PvP ;; 6) _t=RP ;; 8) _t="RP PvP" ;; *) _t=Unknown ;; esac
+    printf -v "$1" '%s' "$_t"
 }
 
 status_row() { printf ' %s  %-15s' "$1" "$2"; echo -e "$3"; }   # status_row <icon> <label> <value>
@@ -186,18 +192,21 @@ status_dot() {   # status_dot <process-name> <session>
     fi
 }
 
-autostart_dot() {   # autostart_dot <service-name>
-    local svc="$1"
-    if [ -z "$svc" ]; then
-        status_row 🚀 "Autostart:" "${RED}service name missing${RESET}"
-    elif systemctl is-enabled "$svc" >/dev/null 2>&1; then
-        status_row 🚀 "Autostart:" "${GREEN}ENABLED${RESET}"
-    elif [ -f "/etc/systemd/system/$svc" ]; then
-        status_row 🚀 "Autostart:" "${YELLOW}service exists, disabled${RESET}"
+# Coloured autostart state of <service> into <var> (status row + autostart menu).
+autostart_state() {   # autostart_state <var> <service-name>
+    local _as   # _-prefixed: a local named like the caller's <var> would swallow printf -v
+    if [ -z "$2" ]; then
+        _as="${RED}service name missing${RESET}"
+    elif systemctl is-enabled --quiet "$2" 2>/dev/null; then
+        _as="${GREEN}ENABLED${RESET}"
+    elif [ -f "/etc/systemd/system/$2" ]; then
+        _as="${YELLOW}service exists, disabled${RESET}"
     else
-        status_row 🚀 "Autostart:" "${RED}DISABLED${RESET}"
+        _as="${RED}DISABLED${RESET}"
     fi
+    printf -v "$1" '%s' "$_as"
 }
+autostart_dot() { local s; autostart_state s "$1"; status_row 🚀 "Autostart:" "$s"; }   # autostart_dot <service-name>
 
 # Header row: the AzerothCore checkout's branch and commit, plus whether origin
 # carries newer ones. The fetch runs detached in the background with its result
@@ -473,7 +482,6 @@ wait_for_port_release() {   # wait_for_port_release <conf>
             if [ "$i" -gt 1 ]; then echo -e "${CYAN}⏳  Port $port released.${RESET}"; fi
             return 0
         fi
-        exec 3>&- 2>/dev/null || true
         sleep 1
     done
     echo -e "${YELLOW}⚠️  Port $port is still in use after 20s - starting anyway.${RESET}"

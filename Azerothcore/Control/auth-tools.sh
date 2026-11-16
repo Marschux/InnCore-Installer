@@ -18,10 +18,9 @@ set +eu
 EDITOR="${EDITOR:-nano}"
 MAGENTA='\033[1;35m'   # the rest of the palette comes from common.sh
 
-# mysql_auth (runs a query as the LoginDatabaseInfo user) and read_login_database
-# (parses authserver.conf into DB_HOST..DB_NAME) both come from common-ops.sh.
-
-escape_sql() { local q="'"; printf '%s' "${1//$q/$q$q}"; }
+# mysql_auth (runs a query as the LoginDatabaseInfo user), read_login_database
+# (parses authserver.conf into DB_HOST..DB_NAME) and escape_sql come from
+# common-ops.sh.
 
 # y/n prompt. Anything but y/j prints <cancel-message> and fails, so callers
 # write: ask_yes "Do it?" || return 0
@@ -113,6 +112,7 @@ PYTHON
 # into SRP_SALT / SRP_VERIFIER.
 read_password_srp6() {   # read_password_srp6 <username>
     local p1 p2
+    check_python3 || return 1
     read -s -p "🔒  Password: " p1; echo ""
     [ -n "$p1" ] || { echo -e "${RED}❌ Password must not be empty.${NC}"; return 1; }
     read -s -p "🔒  Repeat password: " p2; echo ""
@@ -152,14 +152,8 @@ find_account() {
 
 get_next_account_id() {
     local max_id
-
     max_id=$(mysql_auth -N -s -e "SELECT IFNULL(MAX(id),0) FROM account WHERE id < 10000;")
-
-    if [[ -z "$max_id" || "$max_id" == "NULL" ]]; then
-        echo "1"
-    else
-        echo $((max_id + 1))
-    fi
+    echo $(( ${max_id:-0} + 1 ))
 }
 
 add_account() {
@@ -168,8 +162,6 @@ add_account() {
     clear
     box_title "ADD ACCOUNT"
     echo ""
-
-    check_python3 || return 1
 
     db_line
     echo ""
@@ -342,8 +334,7 @@ change_username() {
         echo ""
         echo -e "${YELLOW}⚠️  Password must now be reset for the new username.${NC}"
 
-        change_password
-        load_account "$ACC_ID"
+        change_password   # edit_account reloads ACC_* afterwards
     else
         echo -e "${RED}❌ Failed to change username.${NC}"
     fi
@@ -411,25 +402,6 @@ show_account_gm_status() {
     done <<< "$result"
 }
 
-show_realm_selection() {
-    local realm_list
-
-    echo ""
-    echo -e "${CYAN}Realm selection:${NC}"
-    echo -e "${GREEN}[-1]${NC} All realms"
-
-    realm_list=$(mysql_auth --batch --skip-column-names -e "
-        SELECT id, name
-        FROM realmlist
-        ORDER BY id ASC;
-    ")
-
-    while IFS=$'\t' read -r realm_id realm_name; do
-        [ -n "$realm_id" ] && echo -e "${GREEN}[$realm_id]${NC} $realm_name"
-    done <<< "$realm_list"
-
-    echo ""
-}
 
 set_gm_level() {
     local account_id="$1" gm_level="$2" realm_id="$3"
@@ -470,7 +442,9 @@ set_gm_level_flow() {
         return 1
     fi
 
-    show_realm_selection
+    echo ""
+    show_realms
+    echo ""
 
     read -p "🔹  Realm ID [-1]: " realm_id
     realm_id=${realm_id:--1}
@@ -715,38 +689,25 @@ while true; do
 done
 }
 
-get_realm_type_name() {
-    local icon="$1"
+# Dotted netmask -> "/<bits>" into <var> ("?" if malformed).
+mask_to_cidr() {   # mask_to_cidr <var> <mask>
+    local _a _b _c _d _o _bits=0
 
-    case "$icon" in
-        0) echo "Normal" ;;
-        1) echo "PvP" ;;
-        4) echo "Normal" ;;
-        6) echo "RP" ;;
-        8) echo "RP PvP" ;;
-        *) echo "Unknown" ;;
-    esac
-}
+    IFS='.' read -r _a _b _c _d <<< "$2"
 
-mask_to_cidr() {
-    local mask="$1"
-    local a b c d octet cidr=0
-
-    IFS='.' read -r a b c d <<< "$mask"
-
-    if [ -z "$a" ] || [ -z "$b" ] || [ -z "$c" ] || [ -z "$d" ]; then
-        echo "?"
+    if ! [[ "$_a.$_b.$_c.$_d" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        printf -v "$1" '?'
         return
     fi
 
-    for octet in "$a" "$b" "$c" "$d"; do
-        while [ "$octet" -gt 0 ]; do
-            cidr=$((cidr + (octet & 1)))
-            octet=$((octet >> 1))
+    for _o in "$_a" "$_b" "$_c" "$_d"; do
+        while [ "$_o" -gt 0 ]; do
+            _bits=$((_bits + (_o & 1)))
+            _o=$((_o >> 1))
         done
     done
 
-    echo "/$cidr"
+    printf -v "$1" '/%s' "$_bits"
 }
 
 port_open() {   # port_open <host> <port> <timeout-s>
@@ -758,7 +719,7 @@ port_open() {   # port_open <host> <port> <timeout-s>
 # ==================================================
 
 show_realmlist_table() {   # show_realmlist_table [status] - "status" adds a live port probe column
-    local rows hr id name address local_address netmask port icon flag timezone security build fmt
+    local rows hr id name address local_address netmask port icon flag timezone security build fmt type cidr fname
     local with_status="${1:-}"
     hr="--------------------------------------------------------------------------------${with_status:+------------}"
     fmt=" %-4s %-18s %-10s %-22s %-22s %-6s %-17s %-5s %-4s %-7s "
@@ -784,8 +745,9 @@ show_realmlist_table() {   # show_realmlist_table [status] - "status" adds a liv
     echo "$hr"
 
     while IFS=$'\t' read -r id name address local_address netmask port icon flag timezone security build; do
-        printf "$fmt" "$id" "$name" "$(get_realm_type_name "$icon")" "$address" \
-            "${local_address}$(mask_to_cidr "$netmask")" "$port" "$(realm_flag_names "$flag")" "$timezone" "$security" "$build"
+        realm_type_name type "$icon"; mask_to_cidr cidr "$netmask"; realm_flag_names fname "$flag"
+        printf "$fmt" "$id" "$name" "$type" "$address" \
+            "${local_address}${cidr}" "$port" "$fname" "$timezone" "$security" "$build"
         if [ -z "$with_status" ]; then echo ""
         elif port_open "$address" "$port" 1; then echo -e "${GREEN}ONLINE${NC}"
         else echo -e "${RED}OFFLINE${NC}"; fi
@@ -899,7 +861,8 @@ add_or_update_realm() {
     echo -e " 🏠  Local address:      ${GREEN}$local_address${NC}"
     echo -e " 😷  Subnet mask:        ${GREEN}$netmask${NC}"
     echo -e " 🔌  Port:               ${GREEN}$port${NC}"
-    echo -e " 🗺️  Icon:               ${GREEN}$icon ($(get_realm_type_name "$icon"))${NC}"
+    local type; realm_type_name type "$icon"
+    echo -e " 🗺️  Icon:               ${GREEN}$icon ($type)${NC}"
     echo -e " 🚩  Flag:               ${GREEN}$flag${NC}"
     echo -e " 🕒  Timezone:           ${GREEN}$timezone${NC}"
     echo -e " 🔒  Security level:     ${GREEN}$security${NC}"
@@ -1017,9 +980,10 @@ ensure_motd_table() {
     fi
 }
 
-show_realms_compact() {
+# Realm picker list; "cancel" adds a [0] Cancel row.
+show_realms() {   # show_realms [cancel]
     echo -e "${GREEN}[-1]${NC} All realms"
-    echo -e "${YELLOW}[0]${NC}  Cancel"
+    [ -z "${1:-}" ] || echo -e "${YELLOW}[0]${NC}  Cancel"
     echo "--------------------------------------------------"
     printf " %-6s %-22s %-22s %-6s\n" "ID" "Name" "Address" "Port"
     echo "--------------------------------------------------"
@@ -1144,7 +1108,7 @@ edit_motd() {
     box_title "ADD OR EDIT MOTD"
     echo ""
 
-    show_realms_compact
+    show_realms cancel
 
     echo ""
     read -p "🔹  Realm ID [-1]: " realm_id
@@ -1295,7 +1259,7 @@ if ! read_login_database; then
 fi
 
 case "${1:-}" in
-    accounts)      check_python3 && account_menu ;;
+    accounts)      account_menu ;;
     realms|motd)   realm_motd_menu ;;
     autoincrement) set_account_auto_increment; wait_for_user ;;
     *) echo "Usage: $0 accounts|realms|autoincrement  (launched from authmenu)"; exit 1 ;;

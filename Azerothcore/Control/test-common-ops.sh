@@ -126,6 +126,25 @@ apply_values "$v" "$t" >/dev/null
 chk "apply result" "$(cat "$t")" "$(printf 'A = v&/|"q"\n# A = c\n  A = i\nA = v&/|"q"\nAiPlayerbot.F = 2\nP = x\nK = 1')"
 chk "apply backup" "$(cat "$t".bak.*)" "$(printf 'A = old\n# A = c\n  A = i\nA=dup\nAiPlayerbot.F = 1\nP = x\nK = 1')"
 
+# escape_sql doubles single quotes.
+chk "escape_sql" "$(escape_sql "O'Neil''s")" "O''Neil''''s"
+
+# realmlist decoders from common.sh (sourcing it needs a control.conf, so pull
+# just the two functions).
+eval "$(sed -n '/^realm_flag_names()/,/^}/p;/^realm_type_name()/,/^}/p' common.sh)"
+realm_flag_names r 0;   chk "flag 0"   "$r" "Online"
+realm_flag_names r 2;   chk "flag 2"   "$r" "Offline"
+realm_flag_names r 34;  chk "flag 34"  "$r" "New"
+realm_flag_names r 65;  chk "flag 65"  "$r" "Invalid+Recommended"
+realm_flag_names r 256; chk "flag 256" "$r" "256"
+realm_flag_names r x;   chk "flag x"   "$r" "x"
+realm_type_name r 4;    chk "icon 4"   "$r" "Normal"
+realm_type_name r 8;    chk "icon 8"   "$r" "RP PvP"
+realm_type_name r 99;   chk "icon 99"  "$r" "Unknown"
+# caller vars named like a helper's former locals must still receive the result
+realm_flag_names f 2;   chk "flag into f" "$f" "Offline"
+realm_type_name t 1;    chk "type into t" "$t" "PvP"
+
 echo "---"
 echo "pass=$pass fail=$fail"
 [ "$fail" -eq 0 ]
