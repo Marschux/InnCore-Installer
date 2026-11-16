@@ -6,7 +6,7 @@
 # tables - all in the auth database. Launched from auth-menu.sh:
 #   auth-tools.sh accounts   -> account menu
 #   auth-tools.sh realms     -> realmlist & MOTD menu
-#   auth-tools.sh            -> small top menu (direct invocation only)
+#   auth-tools.sh autoincrement -> account AUTO_INCREMENT
 # (vendored from InnControl scripts/auth/08_account_manager.sh +
 #  06_realmlist_motd_manager.sh; 09_db_autoincrement_manager.sh folded in)
 # ==================================================
@@ -16,28 +16,9 @@ source "$SCRIPT_DIR/common.sh"
 set +eu
 
 EDITOR="${EDITOR:-nano}"
-
-CYAN='\033[1;36m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-RED='\033[0;31m'
-MAGENTA='\033[1;35m'
-NC='\033[0m'
-
-DB_HOST=""
-DB_PORT=""
-DB_USER=""
-DB_PASS=""
-DB_NAME=""
+MAGENTA='\033[1;35m'   # the rest of the palette comes from common.sh
 
 MOTD_TEXT_RESULT=""
-
-# Realm/MOTD menus expect this exact prompt (overrides common.sh's wait_for_user).
-wait_for_user() {
-    echo ""
-    echo -e "${CYAN}↩️  Press [ENTER] to continue...${NC}"
-    read -r
-}
 
 # mysql_auth (runs a query as the LoginDatabaseInfo user) and read_login_database
 # (parses authserver.conf into DB_HOST..DB_NAME) both come from common-ops.sh.
@@ -92,9 +73,16 @@ print(f"{salt.hex().upper()} {verifier.hex().upper()}")
 PYTHON
 }
 
-pause_menu() {
-    echo ""
-    read -p "🔹  Press [ENTER] to continue..." _
+# Prompt for a password twice and derive the SRP6 salt/verifier for <username>
+# into SRP_SALT / SRP_VERIFIER.
+read_password_srp6() {   # read_password_srp6 <username>
+    local p1 p2
+    read -s -p "🔒  Password: " p1; echo ""
+    [ -n "$p1" ] || { echo -e "${RED}❌ Password must not be empty.${NC}"; return 1; }
+    read -s -p "🔒  Repeat password: " p2; echo ""
+    [ "$p1" = "$p2" ] || { echo -e "${RED}❌ Passwords do not match.${NC}"; return 1; }
+    read -r SRP_SALT SRP_VERIFIER <<< "$(calculate_srp6 "$1" "$p1")"
+    [ -n "$SRP_SALT" ] && [ -n "$SRP_VERIFIER" ] || { echo -e "${RED}❌ SRP6 calculation failed.${NC}"; return 1; }
 }
 
 find_account() {
@@ -119,24 +107,6 @@ find_account() {
             WHERE username='$escaped'
             LIMIT 1;
         "
-    fi
-}
-
-show_auth_status() {
-    if tmx has-session -t "$AUTH_SESSION" 2>/dev/null; then
-        if pgrep -x "authserver" >/dev/null; then
-            echo -e "${GREEN}🟢  Authserver:${NC} ONLINE"
-        else
-            echo -e "${YELLOW}🟡  Authserver:${NC} tmux active, process missing"
-        fi
-
-        echo -e "${CYAN}📂  Session:${NC} $AUTH_SESSION"
-    else
-        if pgrep -x "authserver" >/dev/null; then
-            echo -e "${YELLOW}🟠  Authserver:${NC} process running, tmux missing"
-        else
-            echo -e "${RED}🔴  Authserver:${NC} OFFLINE"
-        fi
     fi
 }
 
@@ -176,14 +146,10 @@ account_name_exists() {
 }
 
 add_account() {
-    local acc_id acc_name acc_name_esc acc_pass acc_pass_confirm
-    local expansion srp6_values final_salt final_verifier confirm sql_query
-    local next_id
+    local acc_id acc_name acc_name_esc expansion confirm sql_query next_id
 
     clear
-    echo -e "${CYAN}==================================================${NC}"
-    echo -e "${CYAN}        ADD ACCOUNT                               ${NC}"
-    echo -e "${CYAN}==================================================${NC}"
+    box_title "ADD ACCOUNT"
     echo ""
 
     check_python3
@@ -220,55 +186,24 @@ add_account() {
         return 1
     fi
 
-    read -s -p "🔒  Password: " acc_pass
-    echo ""
-
-    if [ -z "$acc_pass" ]; then
-        echo -e "${RED}❌ Password must not be empty.${NC}"
-        return 1
-    fi
-
-    read -s -p "🔒  Repeat password: " acc_pass_confirm
-    echo ""
-
-    if [ "$acc_pass" != "$acc_pass_confirm" ]; then
-        echo -e "${RED}❌ Passwords do not match.${NC}"
-        return 1
-    fi
+    read_password_srp6 "$acc_name" || return 1
 
     echo ""
     echo -e "${YELLOW}💡 Expansion:${NC} 0=Classic, 1=TBC, 2=WotLK"
     read -p "🔹  Expansion [2]: " expansion
     expansion=${expansion:-2}
-    validate_number "$expansion" "Expansion"
-
-    if [ "$expansion" -lt 0 ] || [ "$expansion" -gt 2 ]; then
+    if [[ ! "$expansion" =~ ^[0-2]$ ]]; then
         echo -e "${RED}❌ Invalid expansion. Allowed values: 0, 1, 2.${NC}"
         return 1
     fi
 
     echo ""
-    echo -e "${CYAN}⚙️  Calculating SRP6 data...${NC}"
-
-    srp6_values=$(calculate_srp6 "$acc_name" "$acc_pass")
-
-    final_salt=$(echo "$srp6_values" | awk '{print $1}')
-    final_verifier=$(echo "$srp6_values" | awk '{print $2}')
-
-    if [ -z "$final_salt" ] || [ -z "$final_verifier" ]; then
-        echo -e "${RED}❌ SRP6 calculation failed.${NC}"
-        return 1
-    fi
-
-    echo ""
-    echo -e "${CYAN}==================================================${NC}"
-    echo -e "${CYAN}        ACCOUNT SUMMARY                           ${NC}"
-    echo -e "${CYAN}==================================================${NC}"
+    box_title "ACCOUNT SUMMARY"
     echo -e " 🆔  Account ID:  ${GREEN}$acc_id${NC}"
     echo -e " 👤  Username:    ${GREEN}$acc_name${NC}"
     echo -e " 🧩  Expansion:   ${GREEN}$expansion${NC}"
     echo -e " 🐬  Auth DB:     ${GREEN}$DB_NAME @ $DB_HOST:$DB_PORT${NC}"
-    echo -e "${CYAN}==================================================${NC}"
+    menu_footer
     echo ""
 
     read -p "❓ Create this account in the auth database now? (y/n): " confirm
@@ -282,7 +217,7 @@ add_account() {
 INSERT INTO account
     (id, username, salt, verifier, expansion)
 VALUES
-    ($acc_id, '$acc_name_esc', UNHEX('$final_salt'), UNHEX('$final_verifier'), $expansion);
+    ($acc_id, '$acc_name_esc', UNHEX('$SRP_SALT'), UNHEX('$SRP_VERIFIER'), $expansion);
 "
 
     if mysql_auth -e "$sql_query"; then
@@ -300,89 +235,52 @@ VALUES
 # Edit account
 # ==================================================
 
-EDIT_ACCOUNT_ID=""
-EDIT_ACCOUNT_USER=""
-EDIT_ACCOUNT_EXP=""
-EDIT_ACCOUNT_LOCKED=""
-
-load_edit_account_data() {
-    local search="$1"
+# Look up an account by name or ID into ACC_ID / ACC_NAME / ACC_EXP / ACC_LOCKED.
+load_account() {   # load_account <name-or-id>
     local data
+    data=$(find_account "$1")
+    [ -n "$data" ] || { echo -e "${RED}❌ Account not found.${NC}"; return 1; }
+    IFS=$'\t' read -r ACC_ID ACC_NAME ACC_EXP ACC_LOCKED <<< "$data"
+    [ -n "$ACC_ID" ] && [ -n "$ACC_NAME" ] || { echo -e "${RED}❌ Could not parse account data.${NC}"; return 1; }
+}
 
-    data=$(find_account "$search")
-
-    if [ -z "$data" ]; then
-        echo -e "${RED}❌ Account not found.${NC}"
-        return 1
-    fi
-
-    IFS=$'\t' read -r EDIT_ACCOUNT_ID EDIT_ACCOUNT_USER EDIT_ACCOUNT_EXP EDIT_ACCOUNT_LOCKED <<< "$data"
-
-    if [ -z "$EDIT_ACCOUNT_ID" ] || [ -z "$EDIT_ACCOUNT_USER" ]; then
-        echo -e "${RED}❌ Could not parse account data.${NC}"
-        return 1
-    fi
+# Clear screen, title, DB line, then ask for an account and load it.
+prompt_account() {   # prompt_account <title>
+    local search
+    clear
+    box_title "$1"
+    echo ""
+    echo -e "${GREEN}🐬  Auth DB:${NC} $DB_NAME @ $DB_HOST:$DB_PORT"
+    echo ""
+    read -p "🔹  Account name or account ID: " search
+    [ -n "$search" ] || { echo -e "${RED}❌ Input must not be empty.${NC}"; return 1; }
+    load_account "$search"
 }
 
 show_edit_account_info() {
     clear
-
-    echo -e "${CYAN}==================================================${NC}"
-    echo -e "${CYAN}        EDIT ACCOUNT                              ${NC}"
-    echo -e "${CYAN}==================================================${NC}"
+    box_title "EDIT ACCOUNT"
     echo ""
     echo -e "${GREEN}🐬  Auth DB:${NC} $DB_NAME @ $DB_HOST:$DB_PORT"
     echo ""
-    echo -e "${CYAN}==================================================${NC}"
-    echo -e "${CYAN}        ACCOUNT INFORMATION                       ${NC}"
-    echo -e "${CYAN}==================================================${NC}"
-    echo -e " 🆔  ID:          ${GREEN}$EDIT_ACCOUNT_ID${NC}"
-    echo -e " 👤  Username:    ${GREEN}$EDIT_ACCOUNT_USER${NC}"
-    echo -e " 🧩  Expansion:   ${GREEN}$EDIT_ACCOUNT_EXP${NC}"
-    echo -e " 🔒  Locked:      ${GREEN}${EDIT_ACCOUNT_LOCKED:-0}${NC}"
-    echo -e "${CYAN}==================================================${NC}"
+    box_title "ACCOUNT INFORMATION"
+    echo -e " 🆔  ID:          ${GREEN}$ACC_ID${NC}"
+    echo -e " 👤  Username:    ${GREEN}$ACC_NAME${NC}"
+    echo -e " 🧩  Expansion:   ${GREEN}$ACC_EXP${NC}"
+    echo -e " 🔒  Locked:      ${GREEN}${ACC_LOCKED:-0}${NC}"
+    menu_footer
 }
 
 change_password() {
-    local new_pass new_pass_confirm srp6_values final_salt final_verifier
-
     echo ""
-
-    read -s -p "🔒  New password: " new_pass
-    echo ""
-
-    if [ -z "$new_pass" ]; then
-        echo -e "${RED}❌ Password must not be empty.${NC}"
-        return
-    fi
-
-    read -s -p "🔒  Repeat password: " new_pass_confirm
-    echo ""
-
-    if [ "$new_pass" != "$new_pass_confirm" ]; then
-        echo -e "${RED}❌ Passwords do not match.${NC}"
-        return
-    fi
-
-    echo ""
-    echo -e "${CYAN}⚙️  Calculating new SRP6 data...${NC}"
-
-    srp6_values=$(calculate_srp6 "$EDIT_ACCOUNT_USER" "$new_pass")
-
-    final_salt=$(echo "$srp6_values" | awk '{print $1}')
-    final_verifier=$(echo "$srp6_values" | awk '{print $2}')
-
-    if [ -z "$final_salt" ] || [ -z "$final_verifier" ]; then
-        echo -e "${RED}❌ SRP6 calculation failed.${NC}"
-        return
-    fi
+    read_password_srp6 "$ACC_NAME" || return
 
     if mysql_auth -e "
         UPDATE account
-        SET salt=UNHEX('$final_salt'),
-            verifier=UNHEX('$final_verifier'),
+        SET salt=UNHEX('$SRP_SALT'),
+            verifier=UNHEX('$SRP_VERIFIER'),
             session_key=NULL
-        WHERE id=$EDIT_ACCOUNT_ID;
+        WHERE id=$ACC_ID;
     "; then
         echo -e "${GREEN}✅ Password was changed successfully.${NC}"
     else
@@ -395,8 +293,8 @@ change_expansion() {
 
     echo ""
     echo -e "${YELLOW}💡 Expansion:${NC} 0=Classic, 1=TBC, 2=WotLK"
-    read -p "🔹  New expansion [$EDIT_ACCOUNT_EXP]: " new_exp
-    new_exp=${new_exp:-$EDIT_ACCOUNT_EXP}
+    read -p "🔹  New expansion [$ACC_EXP]: " new_exp
+    new_exp=${new_exp:-$ACC_EXP}
 
     if [[ ! "$new_exp" =~ ^[0-2]$ ]]; then
         echo -e "${RED}❌ Invalid expansion. Allowed values: 0, 1, 2.${NC}"
@@ -406,9 +304,9 @@ change_expansion() {
     if mysql_auth -e "
         UPDATE account
         SET expansion=$new_exp
-        WHERE id=$EDIT_ACCOUNT_ID;
+        WHERE id=$ACC_ID;
     "; then
-        EDIT_ACCOUNT_EXP="$new_exp"
+        ACC_EXP="$new_exp"
         echo -e "${GREEN}✅ Expansion was changed successfully.${NC}"
     else
         echo -e "${RED}❌ Failed to change expansion.${NC}"
@@ -433,7 +331,7 @@ change_username() {
         SELECT COUNT(*)
         FROM account
         WHERE username='$new_name_escaped'
-          AND id<>$EDIT_ACCOUNT_ID;
+          AND id<>$ACC_ID;
     ")
 
     if [ "$name_exists" -gt 0 ]; then
@@ -442,7 +340,7 @@ change_username() {
     fi
 
     echo ""
-    echo -e "${YELLOW}⚠️  Username change:${NC} $EDIT_ACCOUNT_USER -> $new_name"
+    echo -e "${YELLOW}⚠️  Username change:${NC} $ACC_NAME -> $new_name"
     echo -e "${YELLOW}💡 Note:${NC} After changing the username, the password must be reset because SRP6 depends on the username."
     echo ""
     read -p "❓ Continue? (y/n): " confirm
@@ -455,42 +353,23 @@ change_username() {
     if mysql_auth -e "
         UPDATE account
         SET username='$new_name_escaped'
-        WHERE id=$EDIT_ACCOUNT_ID;
+        WHERE id=$ACC_ID;
     "; then
-        EDIT_ACCOUNT_USER="$new_name"
+        ACC_NAME="$new_name"
 
         echo -e "${GREEN}✅ Username was changed successfully.${NC}"
         echo ""
         echo -e "${YELLOW}⚠️  Password must now be reset for the new username.${NC}"
 
         change_password
-        load_edit_account_data "$EDIT_ACCOUNT_ID"
+        load_account "$ACC_ID"
     else
         echo -e "${RED}❌ Failed to change username.${NC}"
     fi
 }
 
 edit_account() {
-    local search
-
-    clear
-    echo -e "${CYAN}==================================================${NC}"
-    echo -e "${CYAN}        EDIT ACCOUNT                              ${NC}"
-    echo -e "${CYAN}==================================================${NC}"
-    echo ""
-    echo -e "${GREEN}🐬  Auth DB:${NC} $DB_NAME @ $DB_HOST:$DB_PORT"
-    echo ""
-
-    read -p "🔹  Account name or account ID: " search
-
-    if [ -z "$search" ]; then
-        echo -e "${RED}❌ Input must not be empty.${NC}"
-        return 1
-    fi
-
-    if ! load_edit_account_data "$search"; then
-        return 1
-    fi
+    prompt_account "EDIT ACCOUNT" || return 1
 
     while true; do
         show_edit_account_info
@@ -506,32 +385,11 @@ edit_account() {
         OPTION=${OPTION:-0}
 
         case "$OPTION" in
-            1)
-                change_password
-                pause_menu
-                load_edit_account_data "$EDIT_ACCOUNT_ID"
-                ;;
-
-            2)
-                change_expansion
-                pause_menu
-                load_edit_account_data "$EDIT_ACCOUNT_ID"
-                ;;
-
-            3)
-                change_username
-                pause_menu
-                load_edit_account_data "$EDIT_ACCOUNT_ID"
-                ;;
-
-            0)
-                return 0
-                ;;
-
-            *)
-                echo -e "${RED}❌ Invalid option.${NC}"
-                sleep 1
-                ;;
+            1) change_password;  wait_for_user; load_account "$ACC_ID" ;;
+            2) change_expansion; wait_for_user; load_account "$ACC_ID" ;;
+            3) change_username;  wait_for_user; load_account "$ACC_ID" ;;
+            0) return 0 ;;
+            *) echo -e "${RED}❌ Invalid option.${NC}"; sleep 1 ;;
         esac
     done
 }
@@ -592,23 +450,6 @@ show_realm_selection() {
     echo ""
 }
 
-realm_exists() {
-    local realm_id="$1"
-    local count
-
-    if [ "$realm_id" = "-1" ]; then
-        return 0
-    fi
-
-    count=$(mysql_auth -N -s -e "
-        SELECT COUNT(*)
-        FROM realmlist
-        WHERE id=$realm_id;
-    ")
-
-    [ "$count" -gt 0 ]
-}
-
 set_gm_level() {
     local account_id="$1"
     local gm_level="$2"
@@ -636,48 +477,18 @@ set_gm_level() {
 }
 
 set_gm_level_flow() {
-    local search_param account_data account_id account_name account_expansion
     local account_confirm gm_level realm_id confirm realm_label
-
-    clear
-    echo -e "${CYAN}==================================================${NC}"
-    echo -e "${CYAN}        SET GM LEVEL                              ${NC}"
-    echo -e "${CYAN}==================================================${NC}"
-    echo ""
-    echo -e "${GREEN}🐬  Auth DB:${NC} $DB_NAME @ $DB_HOST:$DB_PORT"
-    echo ""
-
-    read -p "🔹  Account name or account ID: " search_param
-
-    if [ -z "$search_param" ]; then
-        echo -e "${RED}❌ Input must not be empty.${NC}"
-        return 1
-    fi
-
-    account_data=$(find_account "$search_param")
-
-    if [ -z "$account_data" ]; then
-        echo -e "${RED}❌ Account not found.${NC}"
-        return 1
-    fi
-
-    IFS=$'\t' read -r account_id account_name account_expansion _ <<< "$account_data"
-
-    if [ -z "$account_id" ] || [ -z "$account_name" ]; then
-        echo -e "${RED}❌ Could not parse account data.${NC}"
-        return 1
-    fi
+    prompt_account "SET GM LEVEL" || return 1
+    local account_id="$ACC_ID" account_name="$ACC_NAME" account_expansion="$ACC_EXP"
 
     echo ""
-    echo -e "${CYAN}==================================================${NC}"
-    echo -e "${CYAN}        ACCOUNT FOUND                             ${NC}"
-    echo -e "${CYAN}==================================================${NC}"
+    box_title "ACCOUNT FOUND"
     echo -e " 🆔  ID:          ${GREEN}$account_id${NC}"
     echo -e " 👤  Username:    ${GREEN}$account_name${NC}"
     echo -e " 🧩  Expansion:   ${GREEN}$account_expansion${NC}"
     echo -e " 👑  GM status:"
     show_account_gm_status "$account_id"
-    echo -e "${CYAN}==================================================${NC}"
+    menu_footer
     echo ""
 
     read -p "❓ Is this the correct account? (y/n): " account_confirm
@@ -707,13 +518,7 @@ set_gm_level_flow() {
 
     read -p "🔹  Realm ID [-1]: " realm_id
     realm_id=${realm_id:--1}
-
-    validate_number "$realm_id" "Realm ID"
-
-    if ! realm_exists "$realm_id"; then
-        echo -e "${RED}❌ Realm ID does not exist:${NC} $realm_id"
-        return 1
-    fi
+    validate_realm_id "$realm_id" || return 1
 
     if [ "$realm_id" = "-1" ]; then
         realm_label="All realms"
@@ -759,43 +564,20 @@ set_gm_level_flow() {
 # ==================================================
 
 show_account_flow() {
-    local search where row up
+    local row
     local id username email reg_mail joindate last_login last_ip failed_logins
     local locked lock_country online expansion mutetime mutereason totaltime
     local ban bd ubd br bby bact
 
-    clear
-    echo -e "${CYAN}==================================================${NC}"
-    echo -e "${CYAN}        SHOW ACCOUNT                              ${NC}"
-    echo -e "${CYAN}==================================================${NC}"
-    echo ""
-    echo -e "${GREEN}🐬  Auth DB:${NC} $DB_NAME @ $DB_HOST:$DB_PORT"
-    echo ""
-
-    read -p "🔹  Account name or account ID: " search
-    [ -z "$search" ] && { echo -e "${RED}❌ Input must not be empty.${NC}"; return 1; }
-
-    if [[ "$search" =~ ^[0-9]+$ ]]; then
-        where="id=$search"
-    else
-        up=$(printf '%s' "$search" | tr '[:lower:]' '[:upper:]' | xargs)
-        up=$(escape_sql "$up")
-        where="username='$up'"
-    fi
+    prompt_account "SHOW ACCOUNT" || return 1
 
     row=$(mysql_auth --batch --skip-column-names -e "
         SELECT id, username, email, reg_mail, joindate, last_login, last_ip,
                failed_logins, locked, lock_country, online, expansion,
                mutetime, mutereason, totaltime
         FROM account
-        WHERE $where
-        LIMIT 1;
+        WHERE id=$ACC_ID;
     ")
-
-    if [ -z "$row" ]; then
-        echo -e "${RED}❌ Account not found.${NC}"
-        return 1
-    fi
 
     # `read` with a whitespace IFS collapses empty fields (email/last_login are
     # often ''), shifting every column. mapfile -d keeps them.
@@ -807,7 +589,7 @@ show_account_flow() {
     mutetime=${f[12]} mutereason=${f[13]} totaltime=${f[14]}
 
     echo ""
-    echo -e "${CYAN}==================================================${NC}"
+    menu_footer
     printf " %-15s ${GREEN}%s${NC}\n" "🆔  ID:"          "$id"
     printf " %-15s ${GREEN}%s${NC}\n" "👤  Username:"    "$username"
     printf " %-15s %s\n"              "📧  Email:"       "${email:--}"
@@ -831,10 +613,10 @@ show_account_flow() {
     if [ -n "$mutetime" ] && [ "$mutetime" != "0" ]; then
         printf " %-15s ${RED}%s${NC}\n" "🔇  Muted:" "$(date -d "@$mutetime" 2>/dev/null || echo "$mutetime")  (${mutereason:-no reason})"
     fi
-    echo -e "${CYAN}==================================================${NC}"
+    menu_footer
     echo -e " 👑  GM access:"
     show_account_gm_status "$id"
-    echo -e "${CYAN}==================================================${NC}"
+    menu_footer
 
     ban=$(mysql_auth --batch --skip-column-names -e "
         SELECT bandate, unbandate, banreason, bannedby, active
@@ -861,25 +643,9 @@ show_account_flow() {
 # ==================================================
 
 delete_account_flow() {
-    local search account_data account_id account_name confirm
-
-    clear
-    echo -e "${CYAN}==================================================${NC}"
-    echo -e "${CYAN}        DELETE ACCOUNT                            ${NC}"
-    echo -e "${CYAN}==================================================${NC}"
-    echo ""
-    echo -e "${GREEN}🐬  Auth DB:${NC} $DB_NAME @ $DB_HOST:$DB_PORT"
-    echo ""
-
-    read -p "🔹  Account name or account ID: " search
-    [ -z "$search" ] && { echo -e "${RED}❌ Input must not be empty.${NC}"; return 1; }
-
-    account_data=$(find_account "$search")
-    if [ -z "$account_data" ]; then
-        echo -e "${RED}❌ Account not found.${NC}"
-        return 1
-    fi
-    IFS=$'\t' read -r account_id account_name _ _ <<< "$account_data"
+    local confirm
+    prompt_account "DELETE ACCOUNT" || return 1
+    local account_id="$ACC_ID" account_name="$ACC_NAME"
 
     echo ""
     echo -e "${YELLOW}⚠️  About to delete account ${RED}[$account_id] $account_name${NC}"
@@ -907,9 +673,7 @@ delete_account_flow() {
 set_account_auto_increment() {
     local current_max current_auto min_allowed startpoint confirm_low confirm new_auto create_sql extra
 
-    echo -e "${CYAN}==================================================${NC}"
-    echo -e "${CYAN}        ACCOUNT AUTO_INCREMENT MANAGER            ${NC}"
-    echo -e "${CYAN}==================================================${NC}"
+    box_title "ACCOUNT AUTO_INCREMENT MANAGER"
     echo ""
 
     if ! mysql_auth -N -s -e "SELECT 1;" >/dev/null 2>&1; then
@@ -987,10 +751,8 @@ account_menu() {
 while true; do
     clear
 
-    echo -e "${CYAN}==================================================${NC}"
-    echo -e "${CYAN}        AZEROTHCORE ACCOUNT MANAGEMENT            ${NC}"
-    echo -e "${CYAN}==================================================${NC}"
-    show_auth_status
+    box_title "AZEROTHCORE ACCOUNT MANAGEMENT"
+    status_dot authserver "$AUTH_SESSION"
     echo -e "${CYAN}📄  Config:${NC} ${AUTH_CONF:-unknown}"
     echo "--------------------------------------------------"
     echo -e "  ${GREEN}[1]${NC}  🔍  Show account"
@@ -1006,44 +768,13 @@ while true; do
     OPTION=${OPTION:-0}
 
     case "$OPTION" in
-        1)
-            clear
-            show_account_flow
-            pause_menu
-            ;;
-
-        2)
-            clear
-            add_account
-            pause_menu
-            ;;
-
-        3)
-            clear
-            edit_account
-            pause_menu
-            ;;
-
-        4)
-            clear
-            set_gm_level_flow
-            pause_menu
-            ;;
-
-        5)
-            clear
-            delete_account_flow
-            pause_menu
-            ;;
-
-        0)
-            return 0
-            ;;
-
-        *)
-            echo -e "${RED}❌ Invalid option.${NC}"
-            sleep 1
-            ;;
+        1) show_account_flow;   wait_for_user ;;
+        2) add_account;         wait_for_user ;;
+        3) edit_account;        wait_for_user ;;
+        4) set_gm_level_flow;   wait_for_user ;;
+        5) delete_account_flow; wait_for_user ;;
+        0) return 0 ;;
+        *) echo -e "${RED}❌ Invalid option.${NC}"; sleep 1 ;;
     esac
 done
 }
@@ -1082,34 +813,23 @@ mask_to_cidr() {
     echo "/$cidr"
 }
 
-check_realm_online() {
-    local host="$1"
-    local port="$2"
-
-    if [ -z "$host" ] || [ -z "$port" ]; then
-        echo "UNKNOWN"
-        return
-    fi
-
-    if timeout 1 bash -c "</dev/tcp/$host/$port" >/dev/null 2>&1 \
-        || timeout 1 bash -c "</dev/tcp/$host/$port" >/dev/null 2>&1; then
-        echo "ONLINE"
-    else
-        echo "OFFLINE"
-    fi
+port_open() {   # port_open <host> <port> <timeout-s>
+    [ -n "$1" ] && [ -n "$2" ] && timeout "$3" bash -c "</dev/tcp/$1/$2" >/dev/null 2>&1
 }
 
 # ==================================================
 # Realmlist management
 # ==================================================
 
-show_realmlist_table() {
-    local rows
-    local id name address local_address netmask port icon flag timezone security build realm_type cidr local_display
+show_realmlist_table() {   # show_realmlist_table [status] - "status" adds a live port probe column
+    local rows hr id name address local_address netmask port icon flag timezone security build fmt
+    local with_status="${1:-}"
+    hr="--------------------------------------------------------------------------------${with_status:+------------}"
+    fmt=" %-4s %-18s %-10s %-22s %-22s %-6s %-17s %-5s %-4s %-7s "
 
     echo ""
     echo -e "${MAGENTA}📊  Realmlist table${NC}"
-    echo "--------------------------------------------------------------------------------"
+    echo "$hr"
 
     rows=$(mysql_auth --batch --skip-column-names -e "
         SELECT id, name, address, localAddress, localSubnetMask, port, icon, flag, timezone, allowedSecurityLevel, gamebuild
@@ -1119,70 +839,23 @@ show_realmlist_table() {
 
     if [ -z "$rows" ]; then
         echo -e "${YELLOW}ℹ️  No realms found.${NC}"
-        echo "--------------------------------------------------------------------------------"
+        echo "$hr"
         return
     fi
 
-    printf " %-4s %-18s %-10s %-22s %-22s %-6s %-17s %-5s %-4s %-7s\n" \
-        "ID" "Name" "Type" "Address" "LocalAddress" "Port" "Flag" "TZ" "GM" "Build"
-    echo "--------------------------------------------------------------------------------"
+    printf "$fmt" "ID" "Name" "Type" "Address" "LocalAddress" "Port" "Flag" "TZ" "GM" "Build"
+    echo "${with_status:+Status}"
+    echo "$hr"
 
     while IFS=$'\t' read -r id name address local_address netmask port icon flag timezone security build; do
-        realm_type=$(get_realm_type_name "$icon")
-        cidr=$(mask_to_cidr "$netmask")
-        local_display="${local_address}${cidr}"
-        flag=$(realm_flag_names "$flag")
-
-        printf " %-4s %-18s %-10s %-22s %-22s %-6s %-17s %-5s %-4s %-7s\n" \
-            "$id" "$name" "$realm_type" "$address" "$local_display" "$port" "$flag" "$timezone" "$security" "$build"
+        printf "$fmt" "$id" "$name" "$(get_realm_type_name "$icon")" "$address" \
+            "${local_address}$(mask_to_cidr "$netmask")" "$port" "$(realm_flag_names "$flag")" "$timezone" "$security" "$build"
+        if [ -z "$with_status" ]; then echo ""
+        elif port_open "$address" "$port" 1; then echo -e "${GREEN}ONLINE${NC}"
+        else echo -e "${RED}OFFLINE${NC}"; fi
     done <<< "$rows"
 
-    echo "--------------------------------------------------------------------------------"
-}
-
-show_realmlist_table_with_status() {
-    local rows
-    local id name address local_address netmask port icon flag timezone security build realm_type status cidr local_display
-
-    echo ""
-    echo -e "${MAGENTA}📊  Realmlist table${NC}"
-    echo "--------------------------------------------------------------------------------------------"
-
-    rows=$(mysql_auth --batch --skip-column-names -e "
-        SELECT id, name, address, localAddress, localSubnetMask, port, icon, flag, timezone, allowedSecurityLevel, gamebuild
-        FROM realmlist
-        ORDER BY id;
-    ")
-
-    if [ -z "$rows" ]; then
-        echo -e "${YELLOW}ℹ️  No realms found.${NC}"
-        echo "--------------------------------------------------------------------------------------------"
-        return
-    fi
-
-    printf " %-4s %-18s %-10s %-22s %-22s %-6s %-17s %-5s %-4s %-7s %-8s\n" \
-        "ID" "Name" "Type" "Address" "LocalAddress" "Port" "Flag" "TZ" "GM" "Build" "Status"
-    echo "--------------------------------------------------------------------------------------------"
-
-    while IFS=$'\t' read -r id name address local_address netmask port icon flag timezone security build; do
-        realm_type=$(get_realm_type_name "$icon")
-        cidr=$(mask_to_cidr "$netmask")
-        local_display="${local_address}${cidr}"
-        flag=$(realm_flag_names "$flag")
-        status=$(check_realm_online "$address" "$port")
-
-        if [ "$status" = "ONLINE" ]; then
-            status="${GREEN}ONLINE${NC}"
-        else
-            status="${RED}OFFLINE${NC}"
-        fi
-
-        printf " %-4s %-18s %-10s %-22s %-22s %-6s %-17s %-5s %-4s %-7s " \
-            "$id" "$name" "$realm_type" "$address" "$local_display" "$port" "$flag" "$timezone" "$security" "$build"
-        echo -e "$status"
-    done <<< "$rows"
-
-    echo "-------------------------------------------------------------------------------------------------------"
+    echo "$hr"
 }
 
 get_next_realm_id() {
@@ -1191,20 +864,10 @@ get_next_realm_id() {
     echo $((max_id + 1))
 }
 
-test_realm_port() {
-    local address="$1"
-    local port="$2"
-
+test_realm_port() {   # test_realm_port <address> <port>
     echo ""
-    echo -e "${CYAN}🔌  Testing realm connection:${NC} $address:$port"
-
-    if command -v nc >/dev/null 2>&1; then
-        if nc -z -w 3 "$address" "$port" >/dev/null 2>&1; then
-            echo -e "${GREEN}✅ Port is reachable.${NC}"
-        else
-            echo -e "${YELLOW}⚠️  Port is not reachable or blocked.${NC}"
-        fi
-    elif timeout 3 bash -c "</dev/tcp/$address/$port" >/dev/null 2>&1; then
+    echo -e "${CYAN}🔌  Testing realm connection:${NC} $1:$2"
+    if port_open "$1" "$2" 3; then
         echo -e "${GREEN}✅ Port is reachable.${NC}"
     else
         echo -e "${YELLOW}⚠️  Port is not reachable or blocked.${NC}"
@@ -1312,9 +975,7 @@ add_or_update_realm() {
     validate_number "$build" "Gamebuild"
 
     echo ""
-    echo -e "${CYAN}==================================================${NC}"
-    echo -e "${CYAN}        REALM SUMMARY                             ${NC}"
-    echo -e "${CYAN}==================================================${NC}"
+    box_title "REALM SUMMARY"
     echo -e " 🆔  Realm ID:           ${GREEN}$realm_id${NC}"
     echo -e " 📛  Name:               ${GREEN}$realm_name${NC}"
     echo -e " 🌐  Address:            ${GREEN}$address${NC}"
@@ -1326,7 +987,7 @@ add_or_update_realm() {
     echo -e " 🕒  Timezone:           ${GREEN}$timezone${NC}"
     echo -e " 🔒  Security level:     ${GREEN}$security${NC}"
     echo -e " 🛠️  Gamebuild:          ${GREEN}$build${NC}"
-    echo -e "${CYAN}==================================================${NC}"
+    menu_footer
     echo ""
 
     read -p "❓ Write this realm to the realmlist table? (y/n): " confirm
@@ -1408,9 +1069,7 @@ realmlist_menu() {
     while true; do
         clear
 
-        echo -e "${CYAN}==================================================${NC}"
-        echo -e "${CYAN}        AZEROTHCORE REALMLIST MANAGER             ${NC}"
-        echo -e "${CYAN}==================================================${NC}"
+        box_title "AZEROTHCORE REALMLIST MANAGER"
         echo ""
         echo -e "${GREEN}✅ Auth database:${NC} $DB_NAME @ $DB_HOST:$DB_PORT"
         echo ""
@@ -1425,32 +1084,11 @@ realmlist_menu() {
         option=${option:-0}
 
         case "$option" in
-            1)
-                clear
-                add_or_update_realm
-                wait_for_user
-                ;;
-
-            2)
-                clear
-                delete_realm
-                wait_for_user
-                ;;
-
-            3)
-                clear
-                show_realmlist_table_with_status
-                wait_for_user
-                ;;
-
-            0)
-                return 0
-                ;;
-
-            *)
-                echo -e "${RED}❌ Invalid option.${NC}"
-                sleep 1.5
-                ;;
+            1) clear; add_or_update_realm;        wait_for_user ;;
+            2) clear; delete_realm;               wait_for_user ;;
+            3) clear; show_realmlist_table status; wait_for_user ;;
+            0) return 0 ;;
+            *) echo -e "${RED}❌ Invalid option.${NC}"; sleep 1 ;;
         esac
     done
 }
@@ -1509,9 +1147,7 @@ list_motds() {
 
     clear
 
-    echo -e "${CYAN}==================================================${NC}"
-    echo -e "${CYAN}        CURRENT MOTD ENTRIES                      ${NC}"
-    echo -e "${CYAN}==================================================${NC}"
+    box_title "CURRENT MOTD ENTRIES"
     echo ""
 
     result=$(mysql_auth --batch --skip-column-names -e "
@@ -1540,25 +1176,12 @@ list_motds() {
     done <<< "$result"
 }
 
-validate_realm_id() {
-    local realm_id="$1"
-    local realm_exists
-
-    if [[ ! "$realm_id" =~ ^-?[0-9]+$ ]]; then
-        echo -e "${RED}❌ Invalid realm ID.${NC}"
-        return 1
-    fi
-
-    if [ "$realm_id" != "-1" ] && [ "$realm_id" != "0" ]; then
-        realm_exists=$(mysql_auth -N -s -e "SELECT COUNT(*) FROM realmlist WHERE id=$realm_id;")
-
-        if [ "$realm_exists" -eq 0 ]; then
-            echo -e "${RED}❌ Realm ID does not exist:${NC} $realm_id"
-            return 1
-        fi
-    fi
-
-    return 0
+# -1 (all realms) or an id present in realmlist.
+validate_realm_id() {   # validate_realm_id <id>
+    [[ "$1" =~ ^-?[0-9]+$ ]] || { echo -e "${RED}❌ Invalid realm ID.${NC}"; return 1; }
+    [ "$1" = "-1" ] && return 0
+    [ "$(mysql_auth -N -s -e "SELECT COUNT(*) FROM realmlist WHERE id=$1;")" -gt 0 ] 2>/dev/null \
+        || { echo -e "${RED}❌ Realm ID does not exist:${NC} $1"; return 1; }
 }
 
 get_current_motd() {
@@ -1632,9 +1255,7 @@ edit_motd() {
 
     clear
 
-    echo -e "${CYAN}==================================================${NC}"
-    echo -e "${CYAN}        ADD OR EDIT MOTD                          ${NC}"
-    echo -e "${CYAN}==================================================${NC}"
+    box_title "ADD OR EDIT MOTD"
     echo ""
 
     show_realms_compact
@@ -1692,11 +1313,9 @@ edit_motd() {
     fi
 
     echo ""
-    echo -e "${CYAN}==================================================${NC}"
-    echo -e "${CYAN}        MOTD PREVIEW                              ${NC}"
-    echo -e "${CYAN}==================================================${NC}"
+    box_title "MOTD PREVIEW"
     echo "$motd_text"
-    echo -e "${CYAN}==================================================${NC}"
+    menu_footer
     echo ""
 
     read -p "❓ Save this MOTD? (y/n): " CONFIRM_SAVE
@@ -1715,24 +1334,19 @@ delete_motd() {
 
     clear
 
-    echo -e "${CYAN}==================================================${NC}"
-    echo -e "${CYAN}        DELETE MOTD                               ${NC}"
-    echo -e "${CYAN}==================================================${NC}"
+    box_title "DELETE MOTD"
     echo ""
 
     list_motds
     echo ""
 
-    read -p "🔹  Realm ID to delete MOTD from: " realm_id
-
-    if ! validate_realm_id "$realm_id"; then
-        return
-    fi
+    read -p "🔹  Realm ID to delete MOTD from (0 = cancel): " realm_id
 
     if [ "$realm_id" = "0" ]; then
         echo -e "${YELLOW}👋 Operation cancelled.${NC}"
         return
     fi
+    validate_realm_id "$realm_id" || return
 
     motd_exists=$(mysql_auth -N -s -e "SELECT COUNT(*) FROM motd WHERE realmid=$realm_id;")
 
@@ -1763,9 +1377,7 @@ motd_menu() {
     while true; do
         clear
 
-        echo -e "${CYAN}==================================================${NC}"
-        echo -e "${CYAN}        AZEROTHCORE MOTD MANAGER                  ${NC}"
-        echo -e "${CYAN}==================================================${NC}"
+        box_title "AZEROTHCORE MOTD MANAGER"
         echo -e "${GREEN}🐬  Auth DB:${NC} $DB_NAME @ $DB_HOST:$DB_PORT"
         echo "--------------------------------------------------"
         echo -e "  ${GREEN}[1]${NC} Show MOTD entries"
@@ -1778,29 +1390,11 @@ motd_menu() {
         OPTION=${OPTION:-0}
 
         case "$OPTION" in
-            1)
-                list_motds
-                pause_menu
-                ;;
-
-            2)
-                edit_motd
-                pause_menu
-                ;;
-
-            3)
-                delete_motd
-                pause_menu
-                ;;
-
-            0)
-                return 0
-                ;;
-
-            *)
-                echo -e "${RED}❌ Invalid option.${NC}"
-                sleep 1
-                ;;
+            1) list_motds;  wait_for_user ;;
+            2) edit_motd;   wait_for_user ;;
+            3) delete_motd; wait_for_user ;;
+            0) return 0 ;;
+            *) echo -e "${RED}❌ Invalid option.${NC}"; sleep 1 ;;
         esac
     done
 }
@@ -1811,9 +1405,7 @@ realm_motd_menu() {
 while true; do
     clear
 
-    echo -e "${CYAN}==================================================${NC}"
-    echo -e "${CYAN}        AZEROTHCORE REALMLIST & MOTD MANAGER      ${NC}"
-    echo -e "${CYAN}==================================================${NC}"
+    box_title "AZEROTHCORE REALMLIST & MOTD MANAGER"
     echo ""
     echo -e "${GREEN}✅ Auth database:${NC} $DB_NAME @ $DB_HOST:$DB_PORT"
     echo ""
@@ -1827,22 +1419,10 @@ while true; do
     TOP_OPTION=${TOP_OPTION:-0}
 
     case "$TOP_OPTION" in
-        1)
-            realmlist_menu
-            ;;
-
-        2)
-            motd_menu
-            ;;
-
-        0)
-            return 0
-            ;;
-
-        *)
-            echo -e "${RED}❌ Invalid option.${NC}"
-            sleep 1.5
-            ;;
+        1) realmlist_menu ;;
+        2) motd_menu ;;
+        0) return 0 ;;
+        *) echo -e "${RED}❌ Invalid option.${NC}"; sleep 1 ;;
     esac
 done
 }
@@ -1858,41 +1438,10 @@ if ! read_login_database; then
 fi
 
 case "${1:-}" in
-    accounts)
-        check_python3
-        account_menu
-        ;;
-    realms|motd)
-        realm_motd_menu
-        ;;
-    autoincrement)
-        set_account_auto_increment
-        pause_menu
-        ;;
-    *)
-        while true; do
-            clear
-            echo -e "${CYAN}==================================================${NC}"
-            echo -e "${CYAN}        AZEROTHCORE AUTH TOOLS                    ${NC}"
-            echo -e "${CYAN}==================================================${NC}"
-            echo ""
-            echo -e "${GREEN}✅ Auth database:${NC} $DB_NAME @ $DB_HOST:$DB_PORT"
-            echo ""
-            echo "--------------------------------------------------"
-            echo -e "  ${GREEN}[1]${NC}  👤  Account management"
-            echo -e "  ${GREEN}[2]${NC}  🌍  Realmlist & MOTD"
-            echo -e "  ${CYAN}[0]${NC}  🚪  Exit"
-            echo "--------------------------------------------------"
-            read -p "Select option [0]: " MAIN_OPTION
-            MAIN_OPTION=${MAIN_OPTION:-0}
-            case "$MAIN_OPTION" in
-                1) check_python3 && account_menu ;;
-                2) realm_motd_menu ;;
-                0) exit 0 ;;
-                *) echo -e "${RED}❌ Invalid option.${NC}"; sleep 1 ;;
-            esac
-        done
-        ;;
+    accounts)      check_python3; account_menu ;;
+    realms|motd)   realm_motd_menu ;;
+    autoincrement) set_account_auto_increment; wait_for_user ;;
+    *) echo "Usage: $0 accounts|realms|autoincrement  (launched from authmenu)"; exit 1 ;;
 esac
 
 exit 0
