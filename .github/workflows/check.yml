@@ -9,7 +9,7 @@ jobs:
       run:
         working-directory: Azerothcore/Control
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       # Entry scripts only: -x follows them into common.sh / common-ops.sh, so
       # variables defined there and used by the menus are not reported as unused.
       - name: shellcheck
