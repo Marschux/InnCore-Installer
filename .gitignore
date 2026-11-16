@@ -16,11 +16,6 @@ id_ed25519.pub
 id_rsa
 id_rsa.pub
 
-# --- Claude ---
-.claude/
-*.claude
-CLAUDE.md
-
 # --- OS / editor ---
 .DS_Store
 Thumbs.db
