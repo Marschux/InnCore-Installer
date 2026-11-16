@@ -25,6 +25,16 @@ MOTD_TEXT_RESULT=""
 
 escape_sql() { local q="'"; printf '%s' "${1//$q/$q$q}"; }
 
+# y/n prompt. Anything but y/j prints <cancel-message> and fails, so callers
+# write: ask_yes "Do it?" || return 0
+ask_yes() {   # ask_yes <question> [cancel-message]
+    local a
+    read -p "❓ $1 (y/n): " a
+    [[ "$a" =~ ^[JjYy]$ ]] && return 0
+    echo -e "${YELLOW}👋 ${2:-Operation cancelled.}${NC}"
+    return 1
+}
+
 validate_number() {
     local value="$1"
     local name="$2"
@@ -144,7 +154,7 @@ account_name_exists() {
 }
 
 add_account() {
-    local acc_id acc_name acc_name_esc expansion confirm sql_query next_id
+    local acc_id acc_name acc_name_esc expansion sql_query next_id
 
     clear
     box_title "ADD ACCOUNT"
@@ -204,12 +214,7 @@ add_account() {
     menu_footer
     echo ""
 
-    read -p "❓ Create this account in the auth database now? (y/n): " confirm
-
-    if [[ ! "$confirm" =~ ^[JjYy]$ ]]; then
-        echo -e "${YELLOW}👋 Operation cancelled.${NC}"
-        return 0
-    fi
+    ask_yes "Create this account in the auth database now?" || return 0
 
     sql_query="
 INSERT INTO account
@@ -312,7 +317,7 @@ change_expansion() {
 }
 
 change_username() {
-    local new_name new_name_escaped name_exists confirm
+    local new_name new_name_escaped name_exists
 
     echo ""
     read -p "🔹  New account name: " new_name
@@ -341,12 +346,7 @@ change_username() {
     echo -e "${YELLOW}⚠️  Username change:${NC} $ACC_NAME -> $new_name"
     echo -e "${YELLOW}💡 Note:${NC} After changing the username, the password must be reset because SRP6 depends on the username."
     echo ""
-    read -p "❓ Continue? (y/n): " confirm
-
-    if [[ ! "$confirm" =~ ^[JjYy]$ ]]; then
-        echo -e "${YELLOW}👋 Operation cancelled.${NC}"
-        return
-    fi
+    ask_yes "Continue?" || return 0
 
     if mysql_auth -e "
         UPDATE account
@@ -457,7 +457,7 @@ set_gm_level() {
 }
 
 set_gm_level_flow() {
-    local account_confirm gm_level realm_id confirm realm_label
+    local gm_level realm_id realm_label
     prompt_account "SET GM LEVEL" || return 1
     local account_id="$ACC_ID" account_name="$ACC_NAME" account_expansion="$ACC_EXP"
 
@@ -471,12 +471,7 @@ set_gm_level_flow() {
     menu_footer
     echo ""
 
-    read -p "❓ Is this the correct account? (y/n): " account_confirm
-
-    if [[ ! "$account_confirm" =~ ^[JjYy]$ ]]; then
-        echo -e "${YELLOW}👋 Operation cancelled.${NC}"
-        return 0
-    fi
+    ask_yes "Is this the correct account?" || return 0
 
     echo ""
     echo -e "${YELLOW}GM levels:${NC}"
@@ -514,12 +509,7 @@ set_gm_level_flow() {
     echo -e " 🌍  Realm:    ${GREEN}$realm_id - $realm_label${NC}"
     echo ""
 
-    read -p "❓ Continue? (y/n): " confirm
-
-    if [[ ! "$confirm" =~ ^[JjYy]$ ]]; then
-        echo -e "${YELLOW}👋 Operation cancelled.${NC}"
-        return 0
-    fi
+    ask_yes "Continue?" || return 0
 
     if set_gm_level "$account_id" "$gm_level" "$realm_id"; then
         echo ""
@@ -650,8 +640,15 @@ delete_account_flow() {
 # scripts/auth/09_db_autoincrement_manager.sh). Uses mysql_auth / DB_* from
 # common-ops.sh; errors return, never exit.
 # --------------------------------------------------
+# The table's next AUTO_INCREMENT value (SHOW CREATE TABLE), empty if none.
+account_auto_increment() {
+    local sql
+    sql="$(mysql_auth -N -B -e "SHOW CREATE TABLE \`account\`;" 2>/dev/null)"
+    [[ "$sql" =~ AUTO_INCREMENT=([0-9]+) ]] && echo "${BASH_REMATCH[1]}"
+}
+
 set_account_auto_increment() {
-    local current_max current_auto min_allowed startpoint confirm_low confirm new_auto create_sql extra
+    local current_max current_auto min_allowed startpoint new_auto extra
 
     box_title "ACCOUNT AUTO_INCREMENT MANAGER"
     echo ""
@@ -673,8 +670,7 @@ set_account_auto_increment() {
     fi
 
     current_max=$(mysql_auth -N -s -e "SELECT IFNULL(MAX(\`id\`),0) FROM \`account\`;" 2>/dev/null)
-    create_sql=$(mysql_auth -N -B -e "SHOW CREATE TABLE \`account\`;" 2>/dev/null)
-    current_auto=$(echo "$create_sql" | grep -o "AUTO_INCREMENT=[0-9]*" | head -n 1 | cut -d'=' -f2)
+    current_auto=$(account_auto_increment)
     [ -z "$current_max" ] && current_max=0
     [ -z "$current_auto" ] && current_auto=0
     min_allowed=$((current_max + 1))
@@ -701,22 +697,19 @@ set_account_auto_increment() {
     if [ "$startpoint" -lt "$min_allowed" ]; then
         echo ""
         echo -e "${YELLOW}⚠️  Value is below MAX(id)+1 - MySQL will use at least ${min_allowed}.${NC}"
-        read -p "❓ Continue anyway? (y/n): " confirm_low
-        [[ "$confirm_low" =~ ^[JjYy]$ ]] || { echo -e "${YELLOW}👋 Operation cancelled.${NC}"; return 0; }
+        ask_yes "Continue anyway?" || return 0
     fi
 
     echo ""
     echo "SQL:  ALTER TABLE \`$DB_NAME\`.\`account\` AUTO_INCREMENT = $startpoint;"
-    read -p "❓ Set AUTO_INCREMENT now? (y/n): " confirm
-    [[ "$confirm" =~ ^[JjYy]$ ]] || { echo -e "${YELLOW}👋 Operation cancelled.${NC}"; return 0; }
+    ask_yes "Set AUTO_INCREMENT now?" || return 0
 
     if ! mysql_auth -e "ALTER TABLE \`$DB_NAME\`.\`account\` AUTO_INCREMENT = $startpoint;"; then
         echo -e "${RED}❌ Failed to set AUTO_INCREMENT.${NC}"
         return 1
     fi
 
-    new_auto=$(mysql_auth -N -B -e "SHOW CREATE TABLE \`account\`;" 2>/dev/null \
-        | grep -o "AUTO_INCREMENT=[0-9]*" | head -n 1 | cut -d'=' -f2)
+    new_auto=$(account_auto_increment)
     echo ""
     echo -e "${GREEN}✅ AUTO_INCREMENT updated.${NC}  ${current_auto} → ${new_auto:-?}  (requested ${startpoint})"
     if [ -n "$new_auto" ] && [ "$new_auto" -lt "$startpoint" ]; then
@@ -860,7 +853,6 @@ add_or_update_realm() {
     local def_name def_address def_local_address def_netmask def_port def_icon def_flag def_timezone def_security def_build
     local realm_name_esc address_esc local_address_esc netmask_esc
     local sql_query
-    local confirm
 
     show_realmlist_table
 
@@ -970,12 +962,7 @@ add_or_update_realm() {
     menu_footer
     echo ""
 
-    read -p "❓ Write this realm to the realmlist table? (y/n): " confirm
-
-    if [[ ! "$confirm" =~ ^[JjYy]$ ]]; then
-        echo -e "${YELLOW}👋 Operation cancelled. No database changes were made.${NC}"
-        return
-    fi
+    ask_yes "Write this realm to the realmlist table?" "Operation cancelled. No database changes were made." || return 0
 
     realm_name_esc=$(escape_sql "$realm_name")
     address_esc=$(escape_sql "$address")
@@ -1284,12 +1271,7 @@ edit_motd() {
     if [ -z "$motd_text" ]; then
         echo ""
         echo -e "${YELLOW}⚠️  MOTD is empty.${NC}"
-        read -p "❓ Save empty MOTD anyway? (y/n): " CONFIRM_EMPTY
-
-        if [[ ! "$CONFIRM_EMPTY" =~ ^[JjYy]$ ]]; then
-            echo -e "${YELLOW}👋 Operation cancelled.${NC}"
-            return
-        fi
+        ask_yes "Save empty MOTD anyway?" || return 0
     fi
 
     echo ""
@@ -1298,13 +1280,8 @@ edit_motd() {
     menu_footer
     echo ""
 
-    read -p "❓ Save this MOTD? (y/n): " CONFIRM_SAVE
-
-    if [[ "$CONFIRM_SAVE" =~ ^[JjYy]$ ]]; then
-        save_motd "$realm_id" "$motd_text"
-    else
-        echo -e "${YELLOW}👋 MOTD was not saved.${NC}"
-    fi
+    ask_yes "Save this MOTD?" "MOTD was not saved." || return 0
+    save_motd "$realm_id" "$motd_text"
 }
 
 delete_motd() {

@@ -34,7 +34,7 @@ restart_world() { server_restart worldserver "$WORLD_ENGINE" "$WORLD_BINARY" "$W
 reload_world()  { server_reload worldserver "$WORLD_SESSION"; }
 
 save_world() {
-    if tmx has-session -t "$WORLD_SESSION" 2>/dev/null; then
+    if has_session "$WORLD_SESSION"; then
         tmx send-keys -t "$WORLD_SESSION" 'saveall' Enter
         echo "Save command sent to the Worldserver."
     else
@@ -84,6 +84,9 @@ restart_sched_disable() {
     echo "Daily restart scheduler disabled."
 }
 
+# Rewrite <file> without the lines grep matches: drop_lines <file> <grep-args...>
+drop_lines() { grep -v "${@:2}" "$1" > "$1.tmp" 2>/dev/null; mv "$1.tmp" "$1"; }
+
 restart_timer() {
     local f="$RESTART_TIMES_CONF" s="$RESTART_SKIP_CONF" nd t l d
     touch "$f" "$s" 2>/dev/null
@@ -119,13 +122,13 @@ restart_timer() {
         case "$c" in
             1) read -rp "Time HH:MM: " t; read -rp "Lead minutes (in-game warning) [15]: " l; l="${l:-15}"
                if [[ "$t" =~ ^([01][0-9]|2[0-3]):[0-5][0-9]$ ]] && [[ "$l" =~ ^[0-9]+$ ]] && [ "$l" -ge 1 ] && [ "$l" -le 1440 ]; then
-                   grep -v "^${t};" "$f" > "$f.tmp" 2>/dev/null; mv "$f.tmp" "$f"
+                   drop_lines "$f" "^${t};"
                    echo "${t};${l}" >> "$f"; sort -o "$f" "$f"
                    echo "Saved $t (lead $l min)."; restart_sched_reload
                else echo "Invalid time or lead."; fi
                sleep 1 ;;
             2) read -rp "Time HH:MM to delete: " t
-               grep -v "^${t};" "$f" > "$f.tmp" 2>/dev/null; mv "$f.tmp" "$f"
+               drop_lines "$f" "^${t};"
                echo "Removed $t."; restart_sched_reload; sleep 1 ;;
             3) read -rp "Date YYYY-MM-DD: " d; read -rp "Time HH:MM (blank = whole day): " t
                if date -d "$d" >/dev/null 2>&1; then
@@ -134,7 +137,7 @@ restart_timer() {
                else echo "Invalid date."; fi
                sleep 1 ;;
             4) read -rp "Line to un-skip (YYYY-MM-DD or YYYY-MM-DD;HH:MM): " d
-               grep -vxF "$d" "$s" > "$s.tmp" 2>/dev/null; mv "$s.tmp" "$s"
+               drop_lines "$s" -xF "$d"
                echo "Removed."; restart_sched_reload; sleep 1 ;;
             5) restart_sched_enable; sleep 1 ;;
             6) restart_sched_disable; sleep 1 ;;

@@ -161,14 +161,14 @@ status_row() { printf ' %s  %-15s' "$1" "$2"; echo -e "$3"; }   # status_row <ic
 status_dot() {   # status_dot <process-name> <session>
     local process="$1" session="$2" label
     label="${process^}:"
-    if tmx has-session -t "$session" 2>/dev/null; then
-        if pgrep -x "$process" >/dev/null 2>&1; then
+    if has_session "$session"; then
+        if is_running "$process"; then
             status_row 🟢 "$label" "${GREEN}${BOLD}ONLINE${RESET}"
         else
             status_row 🟡 "$label" "${YELLOW}tmux active, process missing${RESET}"
         fi
     else
-        if pgrep -x "$process" >/dev/null 2>&1; then
+        if is_running "$process"; then
             status_row 🟠 "$label" "${YELLOW}process running, tmux missing${RESET}"
         else
             status_row 🔴 "$label" "${RED}${BOLD}OFFLINE${RESET}"
@@ -290,6 +290,8 @@ reboot_lxc() {   # reboot_lxc <process> <session> [shutdown-command]
 # second role's `new-session` lands in the first role's systemd cgroup and
 # stopping one unit kills both. CONTROL_TMUX_L comes from control.conf.
 tmx() { tmux -L "${CONTROL_TMUX_L:-default}" "$@"; }
+has_session() { tmx has-session -t "$1" 2>/dev/null; }   # has_session <session>
+is_running() { pgrep -x "$1" >/dev/null 2>&1; }         # is_running <process>
 
 # The tmux server belongs to the cgroup of whoever starts it. Started from an SSH
 # login (menu) it sits in that session's scope, and on a box shutdown systemd
@@ -316,7 +318,7 @@ server_start() {
     local process="$1" engine="$2" binary="$3" conf="$4" session="$5"
     local name="${process^}"
 
-    if pgrep -x "$process" >/dev/null 2>&1 || tmx has-session -t "$session" 2>/dev/null; then
+    if is_running "$process" || has_session "$session"; then
         echo -e "${YELLOW}⚠️  ${name} is already running: ${session}${RESET}"
         return 0
     fi
@@ -344,7 +346,7 @@ console_follow() {   # console_follow <session>
     local session="$1"
     [ "${MENU_RUNNING:-0}" = 1 ] || return 0
     [ -t 0 ] || return 0
-    tmx has-session -t "$session" 2>/dev/null || return 0
+    has_session "$session" || return 0
     echo -e "${DIM}Opening the console - Ctrl-B then D returns to the menu.${RESET}"
     sleep 2
     tmx attach -t "$session" 2>/dev/null || true
@@ -380,8 +382,8 @@ server_stop() {
 
     echo -e "${CYAN}🛑  Stopping ${process}...${RESET}"
 
-    if ! pgrep -x "$process" >/dev/null 2>&1; then
-        if tmx has-session -t "$session" 2>/dev/null; then
+    if ! is_running "$process"; then
+        if has_session "$session"; then
             echo -e "${YELLOW}⚠️  tmux session exists, but no ${process} process is running.${RESET}"
             echo -e "${CYAN}🧹  Closing empty tmux session...${RESET}"
             tmx kill-session -t "$session" 2>/dev/null || true
@@ -397,7 +399,7 @@ server_stop() {
     # send=0: the caller already issued its own shutdown (the restart runner
     # sends an announce + timed `server shutdown`); just wait it out and verify.
     if [ "$send" = 1 ]; then
-        if [ -n "$shutdown_command" ] && tmx has-session -t "$session" 2>/dev/null; then
+        if [ -n "$shutdown_command" ] && has_session "$session"; then
             echo -e "${CYAN}💾  Saving world...${RESET}"
             tmx send-keys -t "$session" "saveall" Enter
             echo -e "${CYAN}🛑  Sending shutdown (${shutdown_command#server shutdown }s notice)...${RESET}"
@@ -412,7 +414,7 @@ server_stop() {
     last_cpu="$(proc_cpu_ticks "$process")"; last_size="$mark"
     echo -e "${CYAN}⏳  Waiting for ${process} to stop...${RESET}"
 
-    while pgrep -x "$process" >/dev/null 2>&1; do
+    while is_running "$process"; do
         sleep 1; waited=$((waited + 1))
         cpu="$(proc_cpu_ticks "$process")"
         size="$last_size"
@@ -436,7 +438,7 @@ server_stop() {
         if [ $((waited % 30)) -eq 0 ]; then echo "    ...still shutting down (${waited}s)"; fi
     done
 
-    if tmx has-session -t "$session" 2>/dev/null; then
+    if has_session "$session"; then
         echo -e "${CYAN}🧹  Closing tmux session: ${session}${RESET}"
         tmx kill-session -t "$session" 2>/dev/null || true
     fi
@@ -481,17 +483,17 @@ server_kill() {
     local name="${process^}"
     echo -e "${YELLOW}🧨  EMERGENCY STOP: Force-stopping ${process}...${RESET}"
     pkill -TERM -x "$process" 2>/dev/null
-    for _ in $(seq 1 5); do pgrep -x "$process" >/dev/null 2>&1 || break; sleep 1; done
-    if pgrep -x "$process" >/dev/null 2>&1; then
+    for _ in $(seq 1 5); do is_running "$process" || break; sleep 1; done
+    if is_running "$process"; then
         echo -e "${RED}🧨  ${name} is still stuck. Sending KILL...${RESET}"
         pkill -KILL -x "$process" 2>/dev/null
         sleep 1
     fi
-    if tmx has-session -t "$session" 2>/dev/null; then
+    if has_session "$session"; then
         echo -e "${CYAN}🧹  Killing tmux session: ${session}${RESET}"
         tmx kill-session -t "$session" 2>/dev/null || true
     fi
-    pgrep -x "$process" >/dev/null 2>&1 && { echo -e "${RED}⚠️  ${name} still alive - check manually.${RESET}"; return 1; }
+    is_running "$process" && { echo -e "${RED}⚠️  ${name} still alive - check manually.${RESET}"; return 1; }
     echo -e "${GREEN}✅  Emergency stop completed.${RESET}"
 }
 
@@ -499,7 +501,7 @@ server_reload() {
     local process="$1" session="$2"
     local name="${process^}"
     echo -e "${CYAN}♻️  Sending AzerothCore config reload...${RESET}"
-    if ! pgrep -x "$process" >/dev/null 2>&1 || ! tmx has-session -t "$session" 2>/dev/null; then
+    if ! is_running "$process" || ! has_session "$session"; then
         echo -e "${YELLOW}⚠️  ${name} is not running with an active tmux session.${RESET}"
         return 1
     fi
@@ -510,13 +512,13 @@ server_reload() {
 
 server_status() {
     local process="$1" session="$2"
-    if pgrep -x "$process" >/dev/null 2>&1; then
+    if is_running "$process"; then
         echo -e "Status: ${GREEN}${BOLD}ONLINE${RESET}"
         ps -C "$process" -o pid=,etime=,%cpu=,%mem=,cmd=
     else
         echo -e "Status: ${RED}${BOLD}OFFLINE${RESET}"
     fi
-    if tmx has-session -t "$session" 2>/dev/null; then
+    if has_session "$session"; then
         echo -e "tmux: ${GREEN}ACTIVE${RESET} ($session)"
     else
         echo -e "tmux: ${DIM}INACTIVE${RESET} ($session)"

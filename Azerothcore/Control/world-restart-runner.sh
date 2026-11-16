@@ -30,7 +30,7 @@ warn=$((target - lead_s))
 log "Next restart at $time ($(date -d "@$target" '+%F %H:%M')), warning $lead min before."
 wait_until "$warn"
 
-if tmx has-session -t "$SESSION" 2>/dev/null; then
+if has_session "$SESSION"; then
     tmx send-keys -t "$SESSION" "announce Daily restart in ${lead} minute(s) - please log out at a safe spot." Enter
     tmx send-keys -t "$SESSION" "saveall" Enter
     sleep 1
