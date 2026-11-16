@@ -155,14 +155,10 @@ delete_account() {
 # Interactive MySQL shell into the character database (CharacterDatabaseInfo
 # from worldserver.conf).
 char_db_console() {
-    local line h p u pw db
-    line="$(grep -E '^[[:space:]]*CharacterDatabaseInfo[[:space:]]*=' "$WORLD_CONF" | tail -n1)"
-    line="$(echo "$line" | cut -d= -f2- | cut -d'#' -f1 | xargs | sed 's/^"//;s/"$//')"
-    IFS=';' read -r h p u pw db <<< "$line"
-    [ -n "$h" ] && [ -n "$p" ] && [ -n "$u" ] && [ -n "$db" ] \
+    read_db_info CharacterDatabaseInfo "$WORLD_CONF" \
         || { echo "Could not read CharacterDatabaseInfo from $WORLD_CONF."; return 1; }
-    echo "Opening $db @ $h:$p  (Ctrl-D to exit)"
-    MYSQL_PWD="$pw" mysql -h "$h" -P "$p" -u "$u" "$db"
+    echo "Opening $DB_NAME @ $DB_HOST:$DB_PORT  (Ctrl-D to exit)"
+    MYSQL_PWD="$DB_PASS" mysql -h "$DB_HOST" -P "$DB_PORT" -u "$DB_USER" "$DB_NAME"
 }
 
 config_menu() {

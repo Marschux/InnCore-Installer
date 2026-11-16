@@ -33,14 +33,14 @@ validate_number() {
 
     if [[ ! "$value" =~ ^-?[0-9]+$ ]]; then
         echo -e "${RED}❌ Invalid value for $name:${NC} $value"
-        exit 1
+        return 1
     fi
 }
 
 check_python3() {
     if ! command -v python3 >/dev/null 2>&1; then
         echo -e "${RED}❌ python3 is required but not installed.${NC}"
-        exit 1
+        return 1
     fi
 }
 
@@ -152,7 +152,7 @@ add_account() {
     box_title "ADD ACCOUNT"
     echo ""
 
-    check_python3
+    check_python3 || return 1
 
     echo -e "${GREEN}🐬  Auth database:${NC} $DB_NAME @ $DB_HOST:$DB_PORT"
     echo ""
@@ -164,7 +164,7 @@ add_account() {
 
     read -p "🔹  Account ID [$next_id]: " acc_id
     acc_id=${acc_id:-$next_id}
-    validate_number "$acc_id" "Account ID"
+    validate_number "$acc_id" "Account ID" || return 1
 
     if account_id_exists "$acc_id"; then
         echo -e "${RED}❌ Account ID already exists:${NC} $acc_id"
@@ -451,28 +451,10 @@ show_realm_selection() {
 }
 
 set_gm_level() {
-    local account_id="$1"
-    local gm_level="$2"
-    local realm_id="$3"
-    local sql
-
-    if [ "$gm_level" = "0" ]; then
-        sql="
-            DELETE FROM account_access
-            WHERE id=$account_id
-              AND RealmID=$realm_id;
-        "
-    else
-        sql="
-            DELETE FROM account_access
-            WHERE id=$account_id
-              AND RealmID=$realm_id;
-
-            INSERT INTO account_access (id, gmlevel, RealmID)
-            VALUES ($account_id, $gm_level, $realm_id);
-        "
-    fi
-
+    local account_id="$1" gm_level="$2" realm_id="$3"
+    local sql="DELETE FROM account_access WHERE id=$account_id AND RealmID=$realm_id;"
+    # Level 0 = player: the row is just removed.
+    [ "$gm_level" = "0" ] || sql+=" INSERT INTO account_access (id, gmlevel, RealmID) VALUES ($account_id, $gm_level, $realm_id);"
     mysql_auth -e "$sql"
 }
 
@@ -892,7 +874,7 @@ add_or_update_realm() {
 
     read -p "🔹 Realm ID [$next_id]: " realm_id
     realm_id=${realm_id:-$next_id}
-    validate_number "$realm_id" "Realm ID"
+    validate_number "$realm_id" "Realm ID" || return 1
 
     existing_row=$(mysql_auth --batch --skip-column-names -e "
         SELECT name, address, localAddress, localSubnetMask, port, icon, flag, timezone, allowedSecurityLevel, gamebuild
@@ -941,38 +923,38 @@ add_or_update_realm() {
     echo -e "${YELLOW}💡 port:${NC} Worldserver port. Default: 8085."
     read -p "🔹 Port [$def_port]: " port
     port=${port:-$def_port}
-    validate_number "$port" "Port"
+    validate_number "$port" "Port" || return 1
 
     echo ""
     echo -e "${YELLOW}💡 icon:${NC} 0=Normal/PvE, 1=PvP, 4=Normal, 6=RP, 8=RP-PvP"
     read -p "🔹 Icon [$def_icon]: " icon
     icon=${icon:-$def_icon}
-    validate_number "$icon" "Icon"
+    validate_number "$icon" "Icon" || return 1
 
     echo ""
     echo -e "${YELLOW}💡 flag:${NC} 0=None, 1=Invalid, 2=Offline, 4=Build, 8=Medium, 16=Medium, 32=New, 64=Recommended, 128=Full"
     echo -e "${YELLOW}   Note:${NC} the worldserver clears/sets bit 2 itself on start/shutdown."
     read -p "🔹 Flag [$def_flag]: " flag
     flag=${flag:-$def_flag}
-    validate_number "$flag" "Flag"
+    validate_number "$flag" "Flag" || return 1
 
     echo ""
     echo -e "${YELLOW}💡 timezone:${NC} 9=German, 8=English, 10=French, 11=Spanish, 12=Russian, 26=Test Server"
     read -p "🔹 Timezone [$def_timezone]: " timezone
     timezone=${timezone:-$def_timezone}
-    validate_number "$timezone" "Timezone"
+    validate_number "$timezone" "Timezone" || return 1
 
     echo ""
     echo -e "${YELLOW}💡 allowedSecurityLevel:${NC} 0=Player, 1=Moderator, 2=Gamemaster, 3=Administrator, 4=Console"
     read -p "🔹 Security level [$def_security]: " security
     security=${security:-$def_security}
-    validate_number "$security" "Security level"
+    validate_number "$security" "Security level" || return 1
 
     echo ""
     echo -e "${YELLOW}💡 gamebuild:${NC} 12340 = WoW 3.3.5a"
     read -p "🔹 Gamebuild [$def_build]: " build
     build=${build:-$def_build}
-    validate_number "$build" "Gamebuild"
+    validate_number "$build" "Gamebuild" || return 1
 
     echo ""
     box_title "REALM SUMMARY"
@@ -1025,7 +1007,7 @@ add_or_update_realm() {
         test_realm_port "$address" "$port"
     else
         echo -e "${RED}❌ SQL command failed.${NC}"
-        exit 1
+        return 1
     fi
 }
 
@@ -1038,13 +1020,13 @@ delete_realm() {
     echo -e "${RED}🔥  DELETE REALM${NC}"
     read -p "🔹 Realm ID to delete: " delete_id
 
-    validate_number "$delete_id" "Realm ID"
+    validate_number "$delete_id" "Realm ID" || return 1
 
     realm_name=$(mysql_auth -N -s -e "SELECT name FROM realmlist WHERE id=$delete_id LIMIT 1;")
 
     if [ -z "$realm_name" ]; then
         echo -e "${RED}❌ No realm found with ID:${NC} $delete_id"
-        exit 1
+        return 1
     fi
 
     echo ""
@@ -1061,7 +1043,7 @@ delete_realm() {
         echo -e "${GREEN}✅ Realm deleted from realmlist:${NC} [$delete_id] $realm_name"
     else
         echo -e "${RED}❌ Failed to delete realm from realmlist.${NC}"
-        exit 1
+        return 1
     fi
 }
 
@@ -1114,11 +1096,11 @@ ensure_motd_table() {
                 sleep 1
             else
                 echo -e "${RED}❌ Failed to create table 'motd'.${NC}"
-                exit 1
+                return 1
             fi
         else
             echo -e "${RED}❌ Cannot continue without the 'motd' table.${NC}"
-            exit 1
+            return 1
         fi
     fi
 }
@@ -1372,7 +1354,7 @@ delete_motd() {
 }
 
 motd_menu() {
-    ensure_motd_table
+    ensure_motd_table || return 1
 
     while true; do
         clear
@@ -1420,7 +1402,7 @@ while true; do
 
     case "$TOP_OPTION" in
         1) realmlist_menu ;;
-        2) motd_menu ;;
+        2) motd_menu || wait_for_user ;;
         0) return 0 ;;
         *) echo -e "${RED}❌ Invalid option.${NC}"; sleep 1 ;;
     esac
@@ -1438,7 +1420,7 @@ if ! read_login_database; then
 fi
 
 case "${1:-}" in
-    accounts)      check_python3; account_menu ;;
+    accounts)      check_python3 && account_menu ;;
     realms|motd)   realm_motd_menu ;;
     autoincrement) set_account_auto_increment; wait_for_user ;;
     *) echo "Usage: $0 accounts|realms|autoincrement  (launched from authmenu)"; exit 1 ;;

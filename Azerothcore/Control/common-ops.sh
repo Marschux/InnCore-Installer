@@ -195,12 +195,15 @@ apply_two_side_rbac() {
 # authserver.conf via $AUTH_CONF; the world menu has no $AUTH_CONF, so fall back
 # to worldserver.conf ($WORLD_CONF) which carries the same line pointing at the
 # auth DB.
-read_login_database() {
-    local conf="${1:-}" line
+read_login_database() { read_db_info LoginDatabaseInfo "$@"; }
+
+# Any *DatabaseInfo line (Login/World/Character/Playerbots) into DB_HOST..DB_NAME.
+read_db_info() {   # read_db_info <Key> [conf]
+    local key="$1" conf="${2:-}" line
     [ -n "$conf" ] || conf="${AUTH_CONF:-}"
     [ -n "$conf" ] || conf="${WORLD_CONF:-}"
     [ -n "$conf" ] && [ -f "$conf" ] || return 1
-    line=$(grep -E '^[[:space:]]*LoginDatabaseInfo[[:space:]]*=' "$conf" | tail -n 1)
+    line=$(grep -E "^[[:space:]]*${key}[[:space:]]*=" "$conf" | tail -n 1)
     line=$(echo "$line" | cut -d= -f2- | cut -d# -f1 | xargs | sed 's/^"//;s/"$//')
     IFS=';' read -r DB_HOST DB_PORT DB_USER DB_PASS DB_NAME <<< "$line"
     [ -n "${DB_HOST:-}" ] && [ -n "${DB_PORT:-}" ] && [ -n "${DB_USER:-}" ] && [ -n "${DB_NAME:-}" ]
@@ -405,7 +408,8 @@ merge_values() {   # merge_values <template> <dst>
     done < "$dst"
     cat "$out" > "$dst"; rm -f "$out"
     cp "$tpl" "$base"
-    echo "  ~ $(basename "$dst") merged (kept $kept operator value(s)${extra:+, $extra extra})"
+    local more=""; [ "$extra" -gt 0 ] && more=", $extra extra"
+    echo "  ~ $(basename "$dst") merged (kept $kept operator value(s)$more)"
     return 0
 }
 

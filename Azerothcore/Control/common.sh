@@ -207,8 +207,7 @@ acore_update_refresh() {
         if [ -n "$b" ] && [ "$b" != HEAD ] && g fetch --quiet origin "$b"; then
             n="$(g rev-list --count "HEAD..origin/$b" 2>/dev/null)"
         fi
-        printf '%s
-' "${n:-x}" > "$ACORE_UPDATE_CACHE"
+        printf '%s\n' "${n:-x}" > "$ACORE_UPDATE_CACHE"
     ) >"$ACORE_UPDATE_CACHE.log" 2>&1 &
     disown 2>/dev/null || true
 }
