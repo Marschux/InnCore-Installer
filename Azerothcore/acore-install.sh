@@ -486,26 +486,16 @@ collect_basic_inputs() {
     unset ADMIN_PASS_CONFIRM
 }
 
-collect_auth_inputs() {
-    local DEFAULT_OWNER
-    DEFAULT_OWNER="$(default_owner)"
-    read -rp "Owner for the Authserver folder [$DEFAULT_OWNER]: " AUTH_OWNER
-    AUTH_OWNER=${AUTH_OWNER:-$DEFAULT_OWNER}
-    read -rp "Installation path for the Authserver [/opt/ac-authserver]: " AUTH_DIR
-    AUTH_DIR=${AUTH_DIR:-/opt/ac-authserver}
-    read -rp "AzerothCore branch for the Authserver [master]: " AUTH_BRANCH
-    AUTH_BRANCH=${AUTH_BRANCH:-master}
-}
-
-collect_world_inputs() {
-    local DEFAULT_OWNER
-    DEFAULT_OWNER="$(default_owner)"
-    read -rp "Owner for the Worldserver folder [$DEFAULT_OWNER]: " WORLD_OWNER
-    WORLD_OWNER=${WORLD_OWNER:-$DEFAULT_OWNER}
-    read -rp "Installation path for the Worldserver [/opt/ac-worldserver]: " WORLD_DIR
-    WORLD_DIR=${WORLD_DIR:-/opt/ac-worldserver}
-    read -rp "AzerothCore branch for the Worldserver [Playerbot]: " WORLD_BRANCH
-    WORLD_BRANCH=${WORLD_BRANCH:-Playerbot}
+# Sets <ROLE>_OWNER / <ROLE>_DIR / <ROLE>_BRANCH (AUTH_* or WORLD_*).
+collect_server_inputs() {   # collect_server_inputs auth|world <default-branch>
+    local R="${1^^}" name="${1^}server" dir="/opt/ac-${1}server" def v
+    def="$(default_owner)"
+    read -rp "Owner for the $name folder [$def]: " v
+    printf -v "${R}_OWNER" '%s' "${v:-$def}"
+    read -rp "Installation path for the $name [$dir]: " v
+    printf -v "${R}_DIR" '%s' "${v:-$dir}"
+    read -rp "AzerothCore branch for the $name [$2]: " v
+    printf -v "${R}_BRANCH" '%s' "${v:-$2}"
 }
 
 # The worldserver reads the auth database over the network when it runs on its
@@ -729,127 +719,89 @@ EOF
 }
 
 ################################################################################
-# 2. AUTHSERVER
+# 2. / 3. AUTHSERVER / WORLDSERVER (build only)
 ################################################################################
-run_authserver() {
-    step "1. Update system packages"
-    check_disk "$AUTH_DIR" 20
+STEP_N=0
+nstep() { STEP_N=$((STEP_N + 1)); step "$STEP_N. $1"; }
+
+run_server() {   # run_server auth|world
+    local role="$1" dir owner branch repo apps scripts disk etc
+    if [ "$role" = auth ]; then
+        dir="$AUTH_DIR" owner="$AUTH_OWNER" branch="$AUTH_BRANCH" disk=20
+        repo=https://github.com/azerothcore/azerothcore-wotlk.git apps=auth-only scripts=none
+    else
+        dir="$WORLD_DIR" owner="$WORLD_OWNER" branch="$WORLD_BRANCH" disk=45
+        repo=https://github.com/mod-playerbots/azerothcore-wotlk.git apps=world-only scripts=static
+    fi
+    etc="$dir/env/dist/etc"
+    STEP_N=0
+
+    nstep "Update system packages"
+    check_disk "$dir" "$disk"
     apt_get update && apt_get full-upgrade -y
 
-    step "2. Clone source code"
-    sudo mkdir -p "$AUTH_DIR"
-    sudo chown "$AUTH_OWNER:$AUTH_OWNER" "$AUTH_DIR"
-    cd "$AUTH_DIR"
-    git clone https://github.com/azerothcore/azerothcore-wotlk.git --branch="$AUTH_BRANCH" .
+    nstep "Clone source code"
+    sudo mkdir -p "$dir"
+    sudo chown "$owner:$owner" "$dir"
+    cd "$dir"
+    git clone "$repo" --branch="$branch" .
+    if [ "$role" = world ]; then
+        git -C "$dir/modules" clone https://github.com/mod-playerbots/mod-playerbots.git --branch=master
+    fi
 
-    step "3. Install dependencies"
+    nstep "Install dependencies"
     OSDISTRO="$(. /etc/os-release && echo "$ID")"
     echo "Detected distro: $OSDISTRO"
-    sed -i "s/^#\s*OSDISTRO=.*/OSDISTRO=\"$OSDISTRO\"/" "$AUTH_DIR/conf/dist/config.sh"
+    sed -i "s/^#\s*OSDISTRO=.*/OSDISTRO=\"$OSDISTRO\"/" "$dir/conf/dist/config.sh"
     run_install_deps
     # OSDISTRO is only needed by install-deps; restore the tracked file so
-    # later source updates via authmenu stay a clean fast-forward.
-    git -C "$AUTH_DIR" -c safe.directory='*' checkout -- conf/dist/config.sh || true
+    # later source updates via the menu stay a clean fast-forward.
+    git -C "$dir" -c safe.directory='*' checkout -- conf/dist/config.sh || true
 
-    step "4. Create and enter the build directory"
+    nstep "Create and enter the build directory"
     mkdir -p build
     cd build
 
-    step "5. Run CMake configure"
+    nstep "Run CMake configure"
     cmake ../ \
-      -DCMAKE_INSTALL_PREFIX="$AUTH_DIR/env/dist" \
-      -DAPPS_BUILD=auth-only \
+      -DCMAKE_INSTALL_PREFIX="$dir/env/dist" \
+      -DAPPS_BUILD="$apps" \
       -DTOOLS_BUILD=none \
-      -DSCRIPTS=none
+      -DSCRIPTS="$scripts"
 
-    step "6. Build and install"
+    nstep "Build and install"
     make -j "$(nproc)"
     make install
 
-    step "7. Folder structure and config files"
-    cp "$AUTH_DIR/env/dist/etc/authserver.conf.dist" "$AUTH_DIR/env/dist/etc/authserver.conf"
-    write_conf_db_password "$AUTH_DIR/env/dist/etc/authserver.conf"
-    echo "authserver.conf created: $AUTH_DIR/env/dist/etc/authserver.conf"
+    if [ "$role" = world ]; then
+        nstep "Extract client data"
+        pause "If extracting from your own 3.3.5a client, put the files in place now before the assistant starts. The assistant also offers to download pre-extracted maps/vmaps/mmaps/dbc instead, if you don't have a local client."
+        cd "$dir"
+        ./acore.sh client-data
+    fi
 
-    # The clone/build ran as whoever started acore-install.sh (root on a fresh LXC),
-    # so everything below AUTH_DIR is root-owned. authmenu runs as AUTH_OWNER and
+    nstep "Folder structure and config files"
+    cp "$etc/${role}server.conf.dist" "$etc/${role}server.conf"
+    write_conf_db_password "$etc/${role}server.conf"
+    if [ "$role" = world ]; then
+        write_conf_login_db "$etc/worldserver.conf"
+        echo -e "\nAllowTwoSide.WhoList = 1" >> "$etc/worldserver.conf"
+        cp "$etc/modules/playerbots.conf.dist" "$etc/modules/playerbots.conf"
+        write_conf_db_password "$etc/modules/playerbots.conf"   # PlayerbotsDatabaseInfo
+    fi
+    echo "Config files created under $etc"
+
+    # The clone/build ran as whoever started acore-install.sh (root on a fresh
+    # LXC), so everything below $dir is root-owned. The menu runs as $owner and
     # must be able to write configs, backups and git pulls here.
-    sudo chown -R "$AUTH_OWNER:$AUTH_OWNER" "$AUTH_DIR"
+    sudo chown -R "$owner:$owner" "$dir"
 
-    setup_database "${TUNING_PROFILE:-auth}"
+    setup_database "${TUNING_PROFILE:-$role}"
 
-    step "8. Final step"
-    echo "The Authserver build and database setup are complete."
-    echo "Management scripts and the final 'authmenu' start flow are handled separately."
-    CONTROL_ROLE=auth offer_control_installation
-}
-
-################################################################################
-# 3. WORLDSERVER
-################################################################################
-run_worldserver() {
-    step "1. Update system packages"
-    check_disk "$WORLD_DIR" 45
-    apt_get update && apt_get full-upgrade -y
-
-    step "2. Clone source code and Playerbots module"
-    sudo mkdir -p "$WORLD_DIR"
-    sudo chown "$WORLD_OWNER:$WORLD_OWNER" "$WORLD_DIR"
-
-    cd "$WORLD_DIR"
-    git clone https://github.com/mod-playerbots/azerothcore-wotlk.git --branch="$WORLD_BRANCH" .
-
-    cd "$WORLD_DIR/modules"
-    git clone https://github.com/mod-playerbots/mod-playerbots.git --branch=master
-
-    step "3. Install dependencies"
-    OSDISTRO="$(. /etc/os-release && echo "$ID")"
-    echo "Detected distro: $OSDISTRO"
-    sed -i "s/^#\s*OSDISTRO=.*/OSDISTRO=\"$OSDISTRO\"/" "$WORLD_DIR/conf/dist/config.sh"
-    cd "$WORLD_DIR"
-    run_install_deps
-    # See run_authserver: keep the checkout clean for later worldmenu updates.
-    git -C "$WORLD_DIR" -c safe.directory='*' checkout -- conf/dist/config.sh || true
-
-    step "4. Create and enter the build directory"
-    mkdir -p build
-    cd build
-
-    step "5. Run CMake configure"
-    cmake ../ \
-      -DCMAKE_INSTALL_PREFIX="$WORLD_DIR/env/dist" \
-      -DAPPS_BUILD=world-only \
-      -DSCRIPTS=static \
-      -DTOOLS_BUILD=none
-
-    step "6. Build and install"
-    make -j "$(nproc)"
-    make install
-
-    step "7. Extract client data"
-    pause "If extracting from your own 3.3.5a client, put the files in place now before the assistant starts. The assistant also offers to download pre-extracted maps/vmaps/mmaps/dbc instead, if you don't have a local client."
-    cd "$WORLD_DIR"
-    ./acore.sh client-data
-
-    step "8. Folder structure and config files"
-    cp "$WORLD_DIR/env/dist/etc/worldserver.conf.dist" "$WORLD_DIR/env/dist/etc/worldserver.conf"
-    write_conf_db_password "$WORLD_DIR/env/dist/etc/worldserver.conf"
-    write_conf_login_db "$WORLD_DIR/env/dist/etc/worldserver.conf"
-    echo -e "\nAllowTwoSide.WhoList = 1" >> "$WORLD_DIR/env/dist/etc/worldserver.conf"
-    cp "$WORLD_DIR/env/dist/etc/modules/playerbots.conf.dist" "$WORLD_DIR/env/dist/etc/modules/playerbots.conf"
-    write_conf_db_password "$WORLD_DIR/env/dist/etc/modules/playerbots.conf"   # PlayerbotsDatabaseInfo
-    echo "worldserver.conf and playerbots.conf created."
-
-    # See run_authserver: hand the whole tree to WORLD_OWNER so worldmenu (which
-    # runs as that user) can write configs, backups and git pulls.
-    sudo chown -R "$WORLD_OWNER:$WORLD_OWNER" "$WORLD_DIR"
-
-    setup_database "${TUNING_PROFILE:-world}"
-
-    step "9. Final step"
-    echo "The Worldserver build and database setup are complete."
-    echo "Management scripts and the final 'worldmenu' start flow are handled separately."
-    CONTROL_ROLE=world offer_control_installation
+    nstep "Final step"
+    echo "The ${role^}server build and database setup are complete."
+    echo "Management scripts and the final '${role}menu' start flow are handled separately."
+    CONTROL_ROLE=$role offer_control_installation
 }
 
 ################################################################################
@@ -859,9 +811,9 @@ run_bothserver() {
     TUNING_PROFILE=both
     SKIP_CONTROL_PROMPT=1
     step "Bothserver: Authserver"
-    run_authserver
+    run_server auth
     step "Bothserver: Worldserver"
-    run_worldserver
+    run_server world
     unset SKIP_CONTROL_PROMPT
     unset TUNING_PROFILE
     CONTROL_ROLE=both offer_control_installation
@@ -966,23 +918,23 @@ main() {
                 run_basic_system
                 ;;
             2)
-                collect_auth_inputs
+                collect_server_inputs auth master
                 collect_database_password
                 ask_install_control auth
-                run_authserver
+                run_server auth
                 launch_menu auth
                 ;;
             3)
-                collect_world_inputs
+                collect_server_inputs world Playerbot
                 collect_database_password
                 collect_auth_db_inputs
                 ask_install_control world
-                run_worldserver
+                run_server world
                 launch_menu world
                 ;;
             4)
-                collect_auth_inputs
-                collect_world_inputs
+                collect_server_inputs auth master
+                collect_server_inputs world Playerbot
                 collect_database_password
                 ask_install_control both
                 run_bothserver
