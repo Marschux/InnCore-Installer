@@ -58,21 +58,30 @@ menu_section() {
     echo -e "${1}${BOLD}${2}${RESET}"
 }
 
-# Inner width for menu frames: fits the terminal (leaving a 2-col margin),
-# clamped so it neither overflows an 80-col console nor sprawls on a wide one.
-menu_width() {
-    local c
-    c="$(tput cols 2>/dev/null || echo 80)"
+# Inner width for menu frames into <var>: fits the terminal (leaving a 2-col
+# margin), clamped so it neither overflows an 80-col console nor sprawls on a
+# wide one. draw_menu sets MENU_COLS once per repaint so the frame's several
+# rules don't each spawn tput.
+menu_width() {   # menu_width <var>
+    local c="${MENU_COLS:-}"
+    [ -n "$c" ] || c="$(tput cols 2>/dev/null || echo 80)"
     c=$((c - 2))
     [ "$c" -gt 79 ] && c=79
     [ "$c" -lt 58 ] && c=58
-    echo "$c"
+    printf -v "$1" '%s' "$c"
+}
+
+# <n> copies of <char> into <var>, without seq / subshells.
+_rule() {   # _rule <var> <char> <n>
+    local _r
+    printf -v _r '%*s' "$3" ''
+    printf -v "$1" '%s' "${_r// /$2}"
 }
 
 box_title() {   # box_title <title> [color]
     local t="$1" c="${2:-$CYAN}" w pad rule tw rest
-    w="$(menu_width)"
-    rule="$(printf '═%.0s' $(seq 1 "$w"))"
+    menu_width w
+    _rule rule '═' "$w"
     # Display width. Submenu titles are "<emoji><2 spaces><ASCII text>"; ${#t}
     # miscounts the emoji (bytes under a non-UTF-8 locale, and terminals render
     # these glyphs 1 col wide anyway), so measure only the ASCII tail after the
@@ -87,8 +96,14 @@ box_title() {   # box_title <title> [color]
     printf "${c}╚%s╝${RESET}\n" "$rule"
 }
 
-hr() { printf "${DIM}%s${RESET}\n" "$(printf '─%.0s' $(seq 1 "$(( $(menu_width) + 2 ))"))"; }
-menu_footer() { printf "${CYAN}%s${RESET}\n" "$(printf '═%.0s' $(seq 1 "$(( $(menu_width) + 2 ))"))"; }
+_full_rule() {   # _full_rule <color> <char>
+    local w r
+    menu_width w
+    _rule r "$2" $((w + 2))
+    printf "${1}%s${RESET}\n" "$r"
+}
+hr() { _full_rule "$DIM" '─'; }
+menu_footer() { _full_rule "$CYAN" '═'; }
 
 # Header for a nested submenu: same box as the main screen, tinted to the
 # section colour, followed by a blank line.
@@ -102,11 +117,12 @@ submenu_title() {   # submenu_title <title> <color>
 # erase-to-end-of-line on every row, then erase everything below. Falls back to
 # a full clear when the frame no longer fits on screen.
 draw_menu() {
-    local render_fn="$1" frame term_rows frame_rows
+    local render_fn="$1" frame term_rows nl MENU_COLS
+    MENU_COLS="$(tput cols 2>/dev/null || echo 80)"
     frame="$($render_fn)"
     term_rows="$(tput lines 2>/dev/null || echo 0)"
-    frame_rows="$(printf '%s\n' "$frame" | wc -l)"
-    if [ "$term_rows" -gt 0 ] && [ $((frame_rows + 2)) -ge "$term_rows" ]; then
+    nl="${frame//[!$'\n']/}"   # frame has ${#nl}+1 lines
+    if [ "$term_rows" -gt 0 ] && [ $((${#nl} + 3)) -ge "$term_rows" ]; then
         clear
         printf '%s\n' "$frame"
         return
@@ -140,22 +156,22 @@ realm_flag_names() {   # realm_flag_names <flag>
     echo "${out#+}"
 }
 
-status_row() { printf ' %s  %-15s' "$1" "$2"; }
+status_row() { printf ' %s  %-15s' "$1" "$2"; echo -e "$3"; }   # status_row <icon> <label> <value>
 
 status_dot() {   # status_dot <process-name> <session>
     local process="$1" session="$2" label
     label="${process^}:"
     if tmx has-session -t "$session" 2>/dev/null; then
         if pgrep -x "$process" >/dev/null 2>&1; then
-            echo -e "$(status_row 🟢 "$label")${GREEN}${BOLD}ONLINE${RESET}"
+            status_row 🟢 "$label" "${GREEN}${BOLD}ONLINE${RESET}"
         else
-            echo -e "$(status_row 🟡 "$label")${YELLOW}tmux active, process missing${RESET}"
+            status_row 🟡 "$label" "${YELLOW}tmux active, process missing${RESET}"
         fi
     else
         if pgrep -x "$process" >/dev/null 2>&1; then
-            echo -e "$(status_row 🟠 "$label")${YELLOW}process running, tmux missing${RESET}"
+            status_row 🟠 "$label" "${YELLOW}process running, tmux missing${RESET}"
         else
-            echo -e "$(status_row 🔴 "$label")${RED}${BOLD}OFFLINE${RESET}"
+            status_row 🔴 "$label" "${RED}${BOLD}OFFLINE${RESET}"
         fi
     fi
 }
@@ -163,13 +179,13 @@ status_dot() {   # status_dot <process-name> <session>
 autostart_dot() {   # autostart_dot <service-name>
     local svc="$1"
     if [ -z "$svc" ]; then
-        echo -e "$(status_row 🚀 "Autostart:")${RED}service name missing${RESET}"
+        status_row 🚀 "Autostart:" "${RED}service name missing${RESET}"
     elif systemctl is-enabled "$svc" >/dev/null 2>&1; then
-        echo -e "$(status_row 🚀 "Autostart:")${GREEN}ENABLED${RESET}"
+        status_row 🚀 "Autostart:" "${GREEN}ENABLED${RESET}"
     elif [ -f "/etc/systemd/system/$svc" ]; then
-        echo -e "$(status_row 🚀 "Autostart:")${YELLOW}service exists, disabled${RESET}"
+        status_row 🚀 "Autostart:" "${YELLOW}service exists, disabled${RESET}"
     else
-        echo -e "$(status_row 🚀 "Autostart:")${RED}DISABLED${RESET}"
+        status_row 🚀 "Autostart:" "${RED}DISABLED${RESET}"
     fi
 }
 
@@ -185,12 +201,11 @@ ACORE_UPDATE_MAX_AGE="${ACORE_UPDATE_MAX_AGE:-21600}"   # 6h
 # Cache holds how many commits origin is ahead. Stale (or missing): bump its
 # mtime first so a hanging or failing fetch cannot respawn on every repaint,
 # then let the background job fill it in.
+# Caller has already checked that ACORE_DIR is a git checkout.
 acore_update_refresh() {
-    local src="${ACORE_DIR:-}" age=0
-    [ -n "$src" ] || return 0
-    gitq "$src" rev-parse --git-dir >/dev/null 2>&1 || return 0
+    local src="$ACORE_DIR" age=0
     if [ -f "$ACORE_UPDATE_CACHE" ]; then
-        age=$(( $(date +%s) - $(stat -c %Y "$ACORE_UPDATE_CACHE" 2>/dev/null || echo 0) ))
+        age=$(( EPOCHSECONDS - $(stat -c %Y "$ACORE_UPDATE_CACHE" 2>/dev/null || echo 0) ))
         [ "$age" -lt "$ACORE_UPDATE_MAX_AGE" ] && return 0
     fi
     touch "$ACORE_UPDATE_CACHE" 2>/dev/null || return 0
@@ -214,19 +229,23 @@ acore_update_refresh() {
 
 # Two header rows: the checkout's branch + commit, and the cached update state.
 acore_version_dot() {
-    acore_update_refresh
-    local head n state
-    head="$(gitq "$ACORE_DIR" rev-parse --short HEAD 2>/dev/null)"
+    local rev head="" branch="" n state
+    # One git call for both: full sha, then the branch name ("HEAD" if detached).
+    if rev="$(gitq "${ACORE_DIR:-}" rev-parse HEAD --abbrev-ref HEAD 2>/dev/null)"; then
+        head="${rev:0:9}"; branch="${rev#*$'\n'}"
+        acore_update_refresh
+    fi
+    [ -n "$branch" ] && [ "$branch" != HEAD ] || branch=unknown
     read -r n < "$ACORE_UPDATE_CACHE" 2>/dev/null || n=""
     case "$n" in
         '')       state="${DIM}checking...${RESET}" ;;
         0)        state="${GREEN}up to date${RESET}" ;;
-        *[!0-9]*) state="${DIM}unknown - see $(basename "$ACORE_UPDATE_CACHE").log${RESET}" ;;
+        *[!0-9]*) state="${DIM}unknown - see ${ACORE_UPDATE_CACHE##*/}.log${RESET}" ;;
         1)        state="${YELLOW}1 commit behind origin${RESET}" ;;
         *)        state="${YELLOW}$n commits behind origin${RESET}" ;;
     esac
-    echo -e "$(status_row 🌿 "Branch:")${CYAN}$(current_branch)${RESET}  ${DIM}${head:-?}${RESET}"
-    echo -e "$(status_row 🔄 "Update:")${state}"
+    status_row 🌿 "Branch:" "${CYAN}${branch}${RESET}  ${DIM}${head:-?}${RESET}"
+    status_row 🔄 "Update:" "${state}"
 }
 
 # --- privilege, git-as-owner, tmux, server process control ----------------

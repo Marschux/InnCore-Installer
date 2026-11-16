@@ -192,11 +192,11 @@ config_menu() {
 
 timer_dot() {
     local nd next=""
-    if nd="$(restart_next)"; then next=" ${DIM}(next $(date -d "@${nd%%;*}" '+%a %H:%M'))${RESET}"; fi
+    if nd="$(restart_next)"; then printf -v next " ${DIM}(next %(%a %H:%M)T)${RESET}" "${nd%%;*}"; fi
     if systemctl is-active --quiet "$WORLD_TIMER_NAME" 2>/dev/null; then
-        echo -e "$(status_row ⏰ "Daily restart:")${GREEN}ENABLED${RESET}${next}"
+        status_row ⏰ "Daily restart:" "${GREEN}ENABLED${RESET}${next}"
     else
-        echo -e "$(status_row ⏰ "Daily restart:")${RED}DISABLED${RESET}"
+        status_row ⏰ "Daily restart:" "${RED}DISABLED${RESET}"
     fi
 }
 
@@ -205,7 +205,7 @@ render_menu() {
     status_dot worldserver "$WORLD_SESSION"
     autostart_dot "$WORLD_SERVICE_NAME"
     timer_dot
-    echo -e "$(status_row 📂 "Session:")${CYAN}${WORLD_SESSION}${RESET}"
+    status_row 📂 "Session:" "${CYAN}${WORLD_SESSION}${RESET}"
     acore_version_dot
     hr
 

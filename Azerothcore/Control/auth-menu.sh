@@ -79,13 +79,12 @@ config_menu() {
 # the realmlist changes rarely; stale-but-instant beats a frozen menu when the
 # DB is slow or down.
 realm_header() {
-    local cache="${TMPDIR:-/tmp}/acore-realmhdr.${CONTROL_TMUX_L:-auth}"
-    if [ -f "$cache" ] && [ "$(( $(date +%s) - $(stat -c %Y "$cache" 2>/dev/null || echo 0) ))" -lt 15 ]; then
-        cat "$cache" 2>/dev/null
-        return 0
+    local cache="${TMPDIR:-/tmp}/acore-realmhdr.${CONTROL_TMUX_L:-auth}" mt l
+    mt="$(stat -c %Y "$cache" 2>/dev/null)" || mt=0
+    if [ $((EPOCHSECONDS - mt)) -ge 15 ]; then
+        ( _realm_header_query ) > "$cache" 2>/dev/null || true
     fi
-    ( _realm_header_query ) > "$cache" 2>/dev/null || true
-    cat "$cache" 2>/dev/null
+    while IFS= read -r l; do printf '%s\n' "$l"; done < "$cache" 2>/dev/null
 }
 
 _realm_header_query() {
@@ -130,7 +129,7 @@ render_menu() {
     box_title "AZEROTHCORE - AUTHSERVER CONTROL"
     status_dot authserver "$AUTH_SESSION"
     autostart_dot "$AUTH_SERVICE_NAME"
-    echo -e "$(status_row 📂 "Session:")${CYAN}${AUTH_SESSION}${RESET}"
+    status_row 📂 "Session:" "${CYAN}${AUTH_SESSION}${RESET}"
     acore_version_dot
     realm_header
     hr

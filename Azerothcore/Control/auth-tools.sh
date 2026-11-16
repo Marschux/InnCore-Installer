@@ -23,9 +23,7 @@ MOTD_TEXT_RESULT=""
 # mysql_auth (runs a query as the LoginDatabaseInfo user) and read_login_database
 # (parses authserver.conf into DB_HOST..DB_NAME) both come from common-ops.sh.
 
-escape_sql() {
-    printf "%s" "$1" | sed "s/'/''/g"
-}
+escape_sql() { local q="'"; printf '%s' "${1//$q/$q$q}"; }
 
 validate_number() {
     local value="$1"
@@ -98,7 +96,7 @@ find_account() {
             LIMIT 1;
         "
     else
-        upper=$(echo "$input" | tr '[:lower:]' '[:upper:]' | xargs)
+        _trim upper "${input^^}"
         escaped=$(escape_sql "$upper")
 
         mysql_auth --batch --skip-column-names -e "
@@ -178,7 +176,7 @@ add_account() {
         return 1
     fi
 
-    acc_name=$(echo "$acc_name" | tr '[:lower:]' '[:upper:]' | xargs)
+    _trim acc_name "${acc_name^^}"
     acc_name_esc=$(escape_sql "$acc_name")
 
     if account_name_exists "$acc_name"; then
@@ -324,7 +322,7 @@ change_username() {
         return
     fi
 
-    new_name=$(echo "$new_name" | tr '[:lower:]' '[:upper:]' | xargs)
+    _trim new_name "${new_name^^}"
     new_name_escaped=$(escape_sql "$new_name")
 
     name_exists=$(mysql_auth -N -s -e "

@@ -40,12 +40,6 @@ git_update() {   # git_update <repo-dir>
     esac
 }
 
-current_branch() {
-    local b
-    b="$(gitq "$ACORE_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null)"
-    { [ -n "$b" ] && [ "$b" != HEAD ] && echo "$b"; } || echo unknown
-}
-
 # Refresh the installed Control scripts from the repo checkout (CONTROL_SOURCE_DIR).
 # Pulls first when the checkout is a git repo. Fails loudly with the fix when the
 # checkout is not readable by the server user (e.g. cloned into a 700 home).
@@ -198,13 +192,16 @@ apply_two_side_rbac() {
 read_login_database() { read_db_info LoginDatabaseInfo "$@"; }
 
 # Any *DatabaseInfo line (Login/World/Character/Playerbots) into DB_HOST..DB_NAME.
+# Runs before every mysql_auth query: one grep, the rest in bash (a bash read
+# loop over a 4000-line worldserver.conf is far slower than the grep fork).
 read_db_info() {   # read_db_info <Key> [conf]
     local key="$1" conf="${2:-}" line
     [ -n "$conf" ] || conf="${AUTH_CONF:-}"
     [ -n "$conf" ] || conf="${WORLD_CONF:-}"
     [ -n "$conf" ] && [ -f "$conf" ] || return 1
-    line=$(grep -E "^[[:space:]]*${key}[[:space:]]*=" "$conf" | tail -n 1)
-    line=$(echo "$line" | cut -d= -f2- | cut -d# -f1 | xargs | sed 's/^"//;s/"$//')
+    line="$(grep -E "^[[:space:]]*${key}[[:space:]]*=" "$conf")" || true
+    line="${line##*$'\n'}"; line="${line#*=}"; line="${line%%#*}"   # last match, RHS, no comment
+    _trim line "$line"; line="${line#\"}"; line="${line%\"}"
     IFS=';' read -r DB_HOST DB_PORT DB_USER DB_PASS DB_NAME <<< "$line"
     [ -n "${DB_HOST:-}" ] && [ -n "${DB_PORT:-}" ] && [ -n "${DB_USER:-}" ] && [ -n "${DB_NAME:-}" ]
 }
@@ -337,14 +334,16 @@ restart_is_skipped() {   # restart_is_skipped <YYYY-MM-DD> <HH:MM>
 # Echoes "EPOCH;HH:MM;LEAD" of the soonest non-skipped restart, or nothing.
 restart_next() {
     [ -s "$RESTART_TIMES_CONF" ] || return 1
-    local now next=0 nt="" nl="" t l day dd ce
-    now="$(date +%s)"
+    local now="$EPOCHSECONDS" noon next=0 nt="" nl="" t l day dd ce
+    # Calendar days via bash's printf %()T from today's noon: +/-1h of DST
+    # shift never crosses midnight from there. Only the slot epoch needs date.
+    noon="$(date -d 'today 12:00' +%s)"
     while IFS=';' read -r t l || [ -n "$t" ]; do
         _trim t "$t"; _trim l "$l"
         [[ "$t" =~ ^([01][0-9]|2[0-3]):[0-5][0-9]$ ]] || continue
         [[ "$l" =~ ^[0-9]+$ ]] || continue
-        for day in $(seq 0 60); do
-            dd="$(date -d "+$day days" +%Y-%m-%d)"
+        for ((day = 0; day <= 60; day++)); do
+            printf -v dd '%(%Y-%m-%d)T' $((noon + day * 86400))
             ce="$(date -d "$dd $t" +%s 2>/dev/null)" || continue
             [ "$ce" -le "$now" ] && continue
             restart_is_skipped "$dd" "$t" && continue
