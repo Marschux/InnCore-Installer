@@ -4,7 +4,7 @@
 
 **AzerothCore WotLK with Playerbots on a Debian 13 LXC - installer plus management menus.**
 
-[![Debian 13](https://img.shields.io/badge/Debian-13_trixie-A81D33?logo=debian&logoColor=white)](https://www.debian.org/) [![AzerothCore](https://img.shields.io/badge/AzerothCore-WotLK_3.3.5a-1f6feb)](https://www.azerothcore.org/) [![Playerbots](https://img.shields.io/badge/mod--playerbots-included-6f42c1)](https://github.com/mod-playerbots/mod-playerbots) [![MySQL 8.4](https://img.shields.io/badge/MySQL-8.4_LTS-4479A1?logo=mysql&logoColor=white)](https://dev.mysql.com/) [![Bash](https://img.shields.io/badge/Bash-scripts-4EAA25?logo=gnubash&logoColor=white)](Azerothcore/acore-install.sh)
+[![Debian 13](https://img.shields.io/badge/Debian-13_trixie-A81D33?logo=debian&logoColor=white)](https://www.debian.org/) [![AzerothCore](https://img.shields.io/badge/AzerothCore-WotLK_3.3.5a-1f6feb)](https://www.azerothcore.org/) [![Playerbots](https://img.shields.io/badge/mod--playerbots-included-6f42c1)](https://github.com/mod-playerbots/mod-playerbots) [![MySQL 8.4](https://img.shields.io/badge/MySQL-8.4_LTS-4479A1?logo=mysql&logoColor=white)](https://dev.mysql.com/) [![Bash](https://img.shields.io/badge/Bash-scripts-4EAA25?logo=gnubash&logoColor=white)](Azerothcore/acore-install.sh) [![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-blue)](LICENSE)
 
 [Install](#install) · [Control menus](#control-menus) · [First start](#first-start)
 
@@ -70,3 +70,8 @@ asks to create `acore_auth`, say yes → `Ctrl-B` `D` to leave. Optional: `Autos
    lower `Playerbots.MaxRandomBots`, start again.
 5. Optional: `Autostart`, `Daily restart timer` (warns players, clean shutdown,
    reboots the LXC).
+
+## License
+
+[GPL-3.0](LICENSE). AzerothCore and mod-playerbots, which the installer
+downloads, keep their own licenses.
