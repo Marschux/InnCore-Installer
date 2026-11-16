@@ -598,20 +598,6 @@ EOF
     sudo systemctl restart mysql
 
     step "Create databases and MySQL user"
-    # Create the role's databases empty up front: the server's first start then
-    # just populates them (Updates.AutoSetup). Left missing, it stops on an
-    # interactive "create it? [yes/no]" inside tmux - which hangs an autostart.
-    local dbs db
-    case "$profile" in
-        auth)  dbs="acore_auth" ;;
-        world) dbs="acore_world acore_characters acore_playerbots" ;;
-        *)     dbs="acore_auth acore_world acore_characters acore_playerbots" ;;
-    esac
-    for db in $dbs; do
-        echo "CREATE DATABASE IF NOT EXISTS \`$db\` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;" | sudo mysql -u root
-        echo "Database ready: $db"
-    done
-
     # CREATE USER IF NOT EXISTS does NOT touch the password of an existing user,
     # so a re-run with a different password would leave the account on the old
     # one while write_conf_db_password() puts the new one into the .conf files -
