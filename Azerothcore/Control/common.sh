@@ -53,6 +53,16 @@ wait_for_user() {
     read -r _ || true
 }
 
+# Typed confirmation for destructive steps; anything else prints "Cancelled."
+# and fails, so callers write: confirm_word DELETE || return 0
+confirm_word() {   # confirm_word <WORD>
+    local a
+    read -rp "Type $1 to confirm: " a
+    [ "$a" = "$1" ] && return 0
+    echo -e "${YELLOW}👋 Cancelled.${RESET}"
+    return 1
+}
+
 menu_section() {
     echo ""
     echo -e "${1}${BOLD}${2}${RESET}"
@@ -278,8 +288,7 @@ gitq() { git -C "$1" -c safe.directory='*' "${@:2}"; }
 # the message below.
 reboot_lxc() {   # reboot_lxc <process> <session> [shutdown-command]
     echo "This stops ${1} and reboots the entire LXC."
-    read -rp "Type REBOOT to confirm: " c
-    [ "$c" = REBOOT ] || { echo "Cancelled."; return 0; }
+    confirm_word REBOOT || return 0
     server_stop "$1" "$2" "${3:-}" 180 || echo "(stop did not finish cleanly - rebooting anyway)"
     echo "Rebooting in 3 seconds..."
     setsid bash -c 'sleep 3; sudo systemctl reboot' >/dev/null 2>&1 </dev/null &
@@ -459,7 +468,7 @@ wait_for_port_release() {   # wait_for_port_release <conf>
     port="$(grep -hE '^[[:space:]]*(RealmServerPort|WorldServerPort)[[:space:]]*=' "$conf" 2>/dev/null \
             | head -1 | sed 's/.*=[[:space:]]*//; s/[[:space:]"]//g; s/#.*//')"
     [[ "$port" =~ ^[0-9]+$ ]] || { sleep 2; return 0; }
-    for i in $(seq 1 20); do
+    for ((i = 1; i <= 20; i++)); do
         if ! (exec 3<>"/dev/tcp/127.0.0.1/$port") 2>/dev/null; then
             if [ "$i" -gt 1 ]; then echo -e "${CYAN}⏳  Port $port released.${RESET}"; fi
             return 0
@@ -485,7 +494,7 @@ server_kill() {
     local name="${process^}"
     echo -e "${YELLOW}🧨  EMERGENCY STOP: Force-stopping ${process}...${RESET}"
     pkill -TERM -x "$process" 2>/dev/null
-    for _ in $(seq 1 5); do is_running "$process" || break; sleep 1; done
+    for _ in 1 2 3 4 5; do is_running "$process" || break; sleep 1; done
     if is_running "$process"; then
         echo -e "${RED}🧨  ${name} is still stuck. Sending KILL...${RESET}"
         pkill -KILL -x "$process" 2>/dev/null

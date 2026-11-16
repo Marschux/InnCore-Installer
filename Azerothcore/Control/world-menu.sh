@@ -23,12 +23,7 @@ kill_world() {
     echo "Use [3] Stop unless the server is genuinely stuck (e.g. hangs on"
     echo "\"Waiting for N characters loading into database\" on a first start)."
     echo "After killing such a hang, lower Playerbots.MaxRandomBots before restarting."
-    read -rp "Type KILL to confirm: " c
-    if [ "$c" = KILL ]; then
-        server_kill worldserver "$WORLD_SESSION"
-    else
-        echo "Cancelled."
-    fi
+    confirm_word KILL && server_kill worldserver "$WORLD_SESSION"
 }
 restart_world() { server_restart worldserver "$WORLD_ENGINE" "$WORLD_BINARY" "$WORLD_CONF" "$WORLD_SESSION" "server shutdown 30" 180; }
 reload_world()  { server_reload worldserver "$WORLD_SESSION"; }
@@ -151,8 +146,7 @@ delete_account() {
     read_login_database || { echo "Could not read LoginDatabaseInfo."; return 1; }
     read -rp "Account ID to delete: " id
     [[ "$id" =~ ^[0-9]+$ ]] || { echo "Invalid account ID."; return 1; }
-    read -rp "Type DELETE to confirm: " confirm
-    [ "$confirm" = DELETE ] && mysql_auth -e "DELETE FROM account WHERE id=$id; DELETE FROM account_access WHERE id=$id;" && echo "Account deleted."
+    confirm_word DELETE && mysql_auth -e "DELETE FROM account WHERE id=$id; DELETE FROM account_access WHERE id=$id;" && echo "Account deleted."
 }
 
 # Interactive MySQL shell into the character database (CharacterDatabaseInfo

@@ -613,19 +613,13 @@ show_account_flow() {
 # ==================================================
 
 delete_account_flow() {
-    local confirm
     prompt_account "DELETE ACCOUNT" || return 1
     local account_id="$ACC_ID" account_name="$ACC_NAME"
 
     echo ""
     echo -e "${YELLOW}⚠️  About to delete account ${RED}[$account_id] $account_name${NC}"
     echo -e "${YELLOW}   and every account_access (GM) row it owns.${NC}"
-    read -p "Type 'DELETE' to confirm: " confirm
-
-    if [ "$confirm" != "DELETE" ]; then
-        echo -e "${YELLOW}👋 Operation cancelled.${NC}"
-        return 0
-    fi
+    confirm_word DELETE || return 0
 
     if mysql_auth -e "DELETE FROM account WHERE id=$account_id; DELETE FROM account_access WHERE id=$account_id;"; then
         echo -e "${GREEN}✅ Account deleted:${NC} [$account_id] $account_name"
@@ -997,7 +991,7 @@ add_or_update_realm() {
 }
 
 delete_realm() {
-    local delete_id realm_name delete_confirm
+    local delete_id realm_name
 
     show_realmlist_table
 
@@ -1016,12 +1010,7 @@ delete_realm() {
 
     echo ""
     echo -e "${YELLOW}⚠️  Warning:${NC} You are about to delete realm ${RED}[$delete_id] $realm_name${NC}"
-    read -p "Type 'DELETE' to confirm: " delete_confirm
-
-    if [ "$delete_confirm" != "DELETE" ]; then
-        echo -e "${YELLOW}👋 Delete operation cancelled.${NC}"
-        return
-    fi
+    confirm_word DELETE || return 0
 
     if mysql_auth -e "DELETE FROM realmlist WHERE id=$delete_id;"; then
         mysql_auth -e "DELETE FROM motd WHERE realmid=$delete_id;" 2>/dev/null
@@ -1065,28 +1054,15 @@ realmlist_menu() {
 # ==================================================
 
 ensure_motd_table() {
-    if ! mysql_auth -N -s -e "SHOW TABLES LIKE 'motd';" | grep -q "^motd$"; then
-        echo -e "${YELLOW}⚠️  Table 'motd' does not exist.${NC}"
-        read -p "❓ Create table now? (y/n): " CONFIRM
-
-        if [[ "$CONFIRM" =~ ^[JjYy]$ ]]; then
-            if mysql_auth -e "
-                CREATE TABLE motd (
-                    realmid INT NOT NULL,
-                    text LONGTEXT NULL,
-                    PRIMARY KEY (realmid)
-                );
-            "; then
-                echo -e "${GREEN}✅ Table 'motd' was created.${NC}"
-                sleep 1
-            else
-                echo -e "${RED}❌ Failed to create table 'motd'.${NC}"
-                return 1
-            fi
-        else
-            echo -e "${RED}❌ Cannot continue without the 'motd' table.${NC}"
-            return 1
-        fi
+    mysql_auth -N -s -e "SHOW TABLES LIKE 'motd';" | grep -q "^motd$" && return 0
+    echo -e "${YELLOW}⚠️  Table 'motd' does not exist.${NC}"
+    ask_yes "Create table now?" "Cannot continue without the 'motd' table." || return 1
+    if mysql_auth -e "CREATE TABLE motd (realmid INT NOT NULL, text LONGTEXT NULL, PRIMARY KEY (realmid));"; then
+        echo -e "${GREEN}✅ Table 'motd' was created.${NC}"
+        sleep 1
+    else
+        echo -e "${RED}❌ Failed to create table 'motd'.${NC}"
+        return 1
     fi
 }
 
@@ -1287,7 +1263,6 @@ edit_motd() {
 delete_motd() {
     local realm_id
     local motd_exists
-    local confirm
 
     clear
 
@@ -1314,12 +1289,7 @@ delete_motd() {
 
     echo ""
     echo -e "${YELLOW}⚠️  You are about to delete the MOTD for realm ID:${NC} $realm_id"
-    read -p "Type 'DELETE' to confirm: " confirm
-
-    if [ "$confirm" != "DELETE" ]; then
-        echo -e "${YELLOW}👋 Delete operation cancelled.${NC}"
-        return
-    fi
+    confirm_word DELETE || return 0
 
     if mysql_auth -e "DELETE FROM motd WHERE realmid=$realm_id;"; then
         echo -e "${GREEN}✅ MOTD deleted successfully.${NC}"

@@ -145,7 +145,7 @@ safe_build() {   # safe_build <build-dir> <repo-dir> <apps-build> <scripts>
 # Wipe only <acore-dir>/build, after a typed confirmation. Source and Control
 # scripts outside build are untouched.
 clean_build() {   # clean_build <acore-dir>
-    local acore="${1:-}" build confirmation
+    local acore="${1:-}" build
     case "$acore" in
         ''|/) echo "Invalid AzerothCore path."; return 1 ;;
         /*) ;;
@@ -162,8 +162,7 @@ clean_build() {   # clean_build <acore-dir>
     echo "Only this directory will be cleaned:"
     echo "  $build"
     echo "Source code and Control scripts outside of build are kept."
-    read -rp "Type exactly CLEAN to continue: " confirmation
-    [ "$confirmation" = CLEAN ] || { echo "Aborted."; return 0; }
+    confirm_word CLEAN || return 0
 
     find "$build" -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
     echo "Build directory cleaned successfully."

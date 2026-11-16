@@ -16,12 +16,8 @@ update_control() { update_control_scripts auth-menu.sh; }
 start_auth()   { server_start authserver "$AUTH_ENGINE" "$AUTH_BINARY" "$AUTH_CONF" "$AUTH_SESSION"; }
 stop_auth()    { server_stop authserver "$AUTH_SESSION" "" 120; }
 kill_auth() {
-    read -rp "Type KILL to force-stop the authserver: " c
-    if [ "$c" = KILL ]; then
-        server_kill authserver "$AUTH_SESSION"
-    else
-        echo "Cancelled."
-    fi
+    echo "Force-stop the authserver."
+    confirm_word KILL && server_kill authserver "$AUTH_SESSION"
 }
 restart_auth() { server_restart authserver "$AUTH_ENGINE" "$AUTH_BINARY" "$AUTH_CONF" "$AUTH_SESSION" "" 120; }
 
