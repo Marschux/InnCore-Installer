@@ -94,6 +94,18 @@ New = n
 Mine = 7')"
 chk "merge base" "$(cat "$d/dst.base")" "$(cat "$d/tpl")"
 
+# read_db_info: last uncommented match wins, quotes / comment / CR stripped,
+# a missing key fails.
+c="$SCRIPT_DIR/db.conf"
+printf '#LoginDatabaseInfo = "x;1;x;x;x"
+LoginDatabaseInfo = "old;1;u;p;d"
+  LoginDatabaseInfo   =   "10.0.0.5;3307;acore;s3cr3t;acore_auth"  # note\r
+WorldDatabaseInfo = "h;2;u;p;w"
+' > "$c"
+read_db_info LoginDatabaseInfo "$c"; chk "dbinfo rc" "$?" "0"
+chk "dbinfo fields" "$DB_HOST|$DB_PORT|$DB_USER|$DB_PASS|$DB_NAME" "10.0.0.5|3307|acore|s3cr3t|acore_auth"
+read_db_info CharacterDatabaseInfo "$c"; chk "dbinfo missing" "$?" "1"
+
 echo "---"
 echo "pass=$pass fail=$fail"
 [ "$fail" -eq 0 ]
