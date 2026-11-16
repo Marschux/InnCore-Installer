@@ -15,6 +15,9 @@ RESTART_TIMES_CONF="$SCRIPT_DIR/restart_times.conf"
 RESTART_SKIP_CONF="$SCRIPT_DIR/restart_skip.conf"
 # shellcheck source=common-ops.sh
 source ./common-ops.sh
+# From common.sh, which needs a control.conf.
+require_path() { [ -e "$1" ]; }
+DIM='' GREEN='' YELLOW='' RESET=''
 
 pass=0 fail=0
 chk() { if [ "$2" = "$3" ]; then pass=$((pass + 1)); else fail=$((fail + 1)); echo "FAIL $1: got [$2] want [$3]"; fi; }
@@ -105,6 +108,16 @@ WorldDatabaseInfo = "h;2;u;p;w"
 read_db_info LoginDatabaseInfo "$c"; chk "dbinfo rc" "$?" "0"
 chk "dbinfo fields" "$DB_HOST|$DB_PORT|$DB_USER|$DB_PASS|$DB_NAME" "10.0.0.5|3307|acore|s3cr3t|acore_auth"
 read_db_info CharacterDatabaseInfo "$c"; chk "dbinfo missing" "$?" "1"
+
+# apply_values: column-0 keys replaced (all duplicates), commented / indented
+# lines untouched, AiPlayerbot <-> Playerbots alias, placeholders and unknown
+# keys skipped, special characters written verbatim, CRLF summary tolerated.
+t="$SCRIPT_DIR/target.conf"; v="$SCRIPT_DIR/summary.conf"
+printf 'A = old\n# A = c\n  A = i\nA=dup\nAiPlayerbot.F = 1\nP = x\nK = 1\n' > "$t"
+printf 'A = v&/|"q" # note\r\nPlayerbots.F = 2\r\n# skip\r\nP = password\r\nZ = 9\r\n' > "$v"
+apply_values "$v" "$t" >/dev/null
+chk "apply result" "$(cat "$t")" "$(printf 'A = v&/|"q"\n# A = c\n  A = i\nA = v&/|"q"\nAiPlayerbot.F = 2\nP = x\nK = 1')"
+chk "apply backup" "$(cat "$t".bak.*)" "$(printf 'A = old\n# A = c\n  A = i\nA=dup\nAiPlayerbot.F = 1\nP = x\nK = 1')"
 
 echo "---"
 echo "pass=$pass fail=$fail"

@@ -436,9 +436,12 @@ merge_values() {   # merge_values <template> <dst>
 # Apply a flat "key = value" summary into a real .conf: every key that already
 # exists in the target is replaced in place, unknown keys are reported and
 # skipped. A timestamped backup of the target is written first.
+# One pass: the target is read once into an array with a key -> line-numbers
+# index, patched in memory and written once (was a grep + sed -i per key).
 apply_values() {
-    local values="$1" target="$2" backup key value ek ev alt
-    local d=$'\x1f'   # sed delimiter - a byte that can't occur in a .conf value
+    local values="$1" target="$2" backup key value alt i l changed=0
+    local -a lines
+    local -A idx=()
     require_path "$values" || return 1
     require_path "$target" || return 1
 
@@ -447,6 +450,15 @@ apply_values() {
     echo -e "${DIM}Backup: $backup${RESET}"
     echo ""
 
+    # Lines of the form "Key = ..." starting at column 0 (commented-out or
+    # indented lines are not settings the server reads).
+    mapfile -t lines < "$target"
+    for i in "${!lines[@]}"; do
+        l="${lines[i]}"
+        [[ "$l" =~ ^([^[:space:]=#]+)[[:space:]]*= ]] && idx[${BASH_REMATCH[1]}]+=" $i"
+    done
+
+    # _trim / _val_of also strip a CRLF summary's trailing \r.
     while IFS='=' read -r key value || [ -n "$key" ]; do
         _trim key "$key"
         [[ -z "$key" || "$key" == \#* ]] && continue
@@ -462,28 +474,26 @@ apply_values() {
                 echo -e "  ${YELLOW}– skipped (edit the summary first, still a placeholder):${RESET} $key"
                 continue ;;
         esac
-        ek="$(printf '%s' "$key"   | sed 's/[][\\/.^$*+?{}|()]/\\&/g')"
-        ev="$(printf '%s' "$value" | sed "s/[\\\\${d}&]/\\\\&/g")"
         # mod-playerbots renamed AiPlayerbot.* to Playerbots.*. A key missing
         # under the summary's prefix is tried under the other one, so one
         # summary patches both an old and a current module.
-        if ! grep -qE "^${ek}[[:space:]]*=" "$target"; then
+        if [ -z "${idx[$key]:-}" ]; then
             case "$key" in
                 AiPlayerbot.*) alt="Playerbots.${key#AiPlayerbot.}" ;;
                 Playerbots.*)  alt="AiPlayerbot.${key#Playerbots.}" ;;
                 *)             alt="" ;;
             esac
-            if [ -n "$alt" ] && grep -qE "^${alt//./\\.}[[:space:]]*=" "$target"; then
-                key="$alt"; ek="${alt//./\\.}"
-            fi
+            if [ -n "$alt" ] && [ -n "${idx[$alt]:-}" ]; then key="$alt"; fi
         fi
-        if grep -qE "^${ek}[[:space:]]*=" "$target"; then
-            sed -i -E "s${d}^${ek}[[:space:]]*=.*${d}${key} = ${ev}${d}" "$target"
+        if [ -n "${idx[$key]:-}" ]; then
+            for i in ${idx[$key]}; do lines[i]="$key = $value"; done
+            changed=1
             echo -e "  ${GREEN}✓${RESET} $key = $value"
         else
             echo -e "  ${YELLOW}– skipped (not in target):${RESET} $key"
         fi
-    done < <(sed 's/\r$//' "$values")
+    done < "$values"
+    if [ "$changed" = 1 ]; then printf '%s\n' "${lines[@]}" > "$target"; fi
     echo ""
     echo -e "${GREEN}$target updated.${RESET}"
     echo "Changes apply on the next server restart."
