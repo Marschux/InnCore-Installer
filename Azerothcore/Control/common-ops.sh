@@ -42,7 +42,7 @@ git_update() {   # git_update <repo-dir>
 
 current_branch() {
     local b
-    b="$(git_owner rev-parse --abbrev-ref HEAD 2>/dev/null)"
+    b="$(gitq "$ACORE_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null)"
     { [ -n "$b" ] && [ "$b" != HEAD ] && echo "$b"; } || echo unknown
 }
 
@@ -129,21 +129,21 @@ build_hint() {   # build_hint <repo-dir>
 safe_build() {   # safe_build <build-dir> <repo-dir> <apps-build> <scripts>
     local dir="$1" repo="${2:-}" apps="${3:-all}" scripts="${4:-static}"
     require_path "$repo" || return 1
-    run_as_owner mkdir -p "$dir" || return 1
+    mkdir -p "$dir" || return 1
     # No configured build tree (fresh box or after 'Clean build directory') -
     # run CMake first, same flags the installer used.
     if [ ! -f "$dir/CMakeCache.txt" ]; then
         echo "No build tree yet - running CMake configure ($apps, scripts=$scripts)..."
-        run_as_owner bash -c "cd '$dir' && cmake '$repo' \
-            -DCMAKE_INSTALL_PREFIX='$repo/env/dist' \
+        (cd "$dir" && cmake "$repo" \
+            -DCMAKE_INSTALL_PREFIX="$repo/env/dist" \
             -DCMAKE_BUILD_TYPE=RelWithDebInfo \
-            -DAPPS_BUILD='$apps' \
+            -DAPPS_BUILD="$apps" \
             -DTOOLS_BUILD=none \
-            -DSCRIPTS='$scripts' \
-            -DMODULES=static" \
+            -DSCRIPTS="$scripts" \
+            -DMODULES=static) \
             || { echo "CMake configure failed."; return 1; }
     fi
-    run_as_owner bash -c "cd '$dir' && make -j \"\$(nproc)\" && make install" || return 1
+    (cd "$dir" && make -j "$(nproc)" && make install) || return 1
     if [ -n "$repo" ]; then gitq "$repo" rev-parse HEAD 2>/dev/null > "$(build_state_file "$repo")" || true; fi
     return 0
 }
@@ -161,7 +161,7 @@ clean_build() {   # clean_build <acore-dir>
     build="$acore/build"
 
     if [ ! -d "$build" ]; then
-        run_as_owner mkdir -p "$build" && echo "Build directory created: $build"
+        mkdir -p "$build" && echo "Build directory created: $build"
         return 0
     fi
 
@@ -171,7 +171,7 @@ clean_build() {   # clean_build <acore-dir>
     read -rp "Type exactly CLEAN to continue: " confirmation
     [ "$confirmation" = CLEAN ] || { echo "Aborted."; return 0; }
 
-    run_as_owner find "$build" -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
+    find "$build" -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
     echo "Build directory cleaned successfully."
 }
 
@@ -430,7 +430,7 @@ apply_values() {
         # Value is written verbatim: the summary file is the source of truth for
         # quoting. Only strip a trailing " # comment" (space-guarded so a '#'
         # inside a quoted value or password survives) and surrounding whitespace.
-        value="$(printf '%s' "$value" | sed -E 's/[[:space:]]+#.*$//; s/^[[:space:]]+//; s/[[:space:]]+$//')"
+        value="$(_val_of "=$value")"
         # Guard against applying an unedited summary: the shipped *DatabaseInfo
         # lines carry a literal "password" placeholder, and writing that over a
         # working config silently breaks every DB connection.
@@ -463,6 +463,31 @@ apply_values() {
     done < <(sed 's/\r$//' "$values")
     echo ""
     echo -e "${GREEN}$target updated.${RESET}"
+    echo "Changes apply on the next server restart."
+}
+
+# Build submenu, shared by both roles.
+build_menu() {   # build_menu <pull-label> <apps-build> <scripts> <pull-command...>
+    local label="$1" apps="$2" scripts="$3" choice
+    shift 3
+    while true; do
+        submenu_title "🛠  BUILD TOOLS" "$COLOR_BUILD"
+        build_hint "$ACORE_DIR"
+        echo ""
+        echo -e "  ${COLOR_BUILD}[1]${RESET}  $label"
+        echo -e "  ${COLOR_BUILD}[2]${RESET}  Build and install"
+        echo -e "  ${COLOR_BUILD}[3]${RESET}  Clean build directory"
+        echo -e "  ${COLOR_BUILD}[0]${RESET}  Back"
+        echo ""; menu_footer
+        read -rp "🔹  Choice [0-3]: " choice
+        case "$choice" in
+            1) run_step "$@" ;;
+            2) run_step safe_build "$ACORE_DIR/build" "$ACORE_DIR" "$apps" "$scripts" ;;
+            3) run_step clean_build "$ACORE_DIR" ;;
+            0) return ;;
+            *) echo "Invalid option."; sleep 1 ;;
+        esac
+    done
 }
 
 # Pick and edit any .conf under the AzerothCore etc tree (worldserver.conf plus

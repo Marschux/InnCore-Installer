@@ -11,6 +11,21 @@ CONTROL_CONFIG="${CONTROL_CONFIG:-$(dirname "${BASH_SOURCE[0]}")/control.conf}"
 [ -f "$CONTROL_CONFIG" ] || { echo "Control configuration missing: $CONTROL_CONFIG"; exit 1; }
 source "$CONTROL_CONFIG"
 
+# Standard AzerothCore layout under ACORE_DIR. control.conf only carries what
+# differs per box (ACORE_DIR, SERVER_USER, ...); set any of these there to override.
+: "${AUTH_ENGINE:=$ACORE_DIR/apps/startup-scripts/src/run-engine}"
+: "${AUTH_BINARY:=$ACORE_DIR/env/dist/bin/authserver}"
+: "${AUTH_CONF:=$ACORE_DIR/env/dist/etc/authserver.conf}"
+: "${AUTH_SESSION:=auth-session}"
+: "${AUTH_SERVICE_NAME:=azerothcore-auth.service}"
+: "${WORLD_ENGINE:=$ACORE_DIR/apps/startup-scripts/src/run-engine}"
+: "${WORLD_BINARY:=$ACORE_DIR/env/dist/bin/worldserver}"
+: "${WORLD_CONF:=$ACORE_DIR/env/dist/etc/worldserver.conf}"
+: "${PLAYERBOTS_CONF:=$ACORE_DIR/env/dist/etc/modules/playerbots.conf}"
+: "${WORLD_SESSION:=world-session}"
+: "${WORLD_SERVICE_NAME:=azerothcore-world.service}"
+WORLD_TIMER_NAME="azerothcore-world-restart.service"   # fixed: the sudoers grant names it
+
 RESET='\033[0m'; BOLD='\033[1m'; DIM='\033[2m'
 CYAN='\033[0;36m'; GREEN='\033[0;32m'; RED='\033[0;31m'; YELLOW='\033[1;33m'
 BLUE='\033[1;34m'; WHITE='\033[1;37m'
@@ -203,7 +218,7 @@ acore_update_refresh() {
 acore_version_dot() {
     acore_update_refresh
     local head n state
-    head="$(git_owner rev-parse --short HEAD 2>/dev/null)"
+    head="$(gitq "$ACORE_DIR" rev-parse --short HEAD 2>/dev/null)"
     read -r n < "$ACORE_UPDATE_CACHE" 2>/dev/null || n=""
     case "$n" in
         '')       state="${DIM}checking...${RESET}" ;;
@@ -236,19 +251,9 @@ reexec_as_owner() {
     fi
 }
 
-# Run a single command as the owner (used for the rare root-invoked path).
-run_as_owner() {
-    if [ "$(id -u)" -eq 0 ] && [ -n "${SERVER_USER:-}" ] && [ "$SERVER_USER" != root ]; then
-        sudo -u "$SERVER_USER" -- "$@"
-    else
-        "$@"
-    fi
-}
-
-git_owner() { run_as_owner git -C "$ACORE_DIR" "$@"; }
-
-# git in <dir> as the owner, tolerating a checkout owned by someone else.
-gitq() { run_as_owner git -C "$1" -c safe.directory='*' "${@:2}"; }
+# git in <dir>, tolerating a checkout owned by someone else. Everything here
+# already runs as the owner (menus re-exec above, units set User=).
+gitq() { git -C "$1" -c safe.directory='*' "${@:2}"; }
 
 # Graceful server stop, then reboot the whole LXC. The reboot is detached with
 # setsid: `systemctl reboot` tears down sshd while this shell is still attached,

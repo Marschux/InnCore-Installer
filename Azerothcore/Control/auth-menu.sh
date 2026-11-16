@@ -10,11 +10,6 @@ reexec_as_owner "$0" "$@"
 # Interactive loop: a single failing status probe must not kill the menu.
 set +e
 
-AUTH_ENGINE="${AUTH_ENGINE:-$ACORE_DIR/apps/startup-scripts/src/run-engine}"
-AUTH_BINARY="${AUTH_BINARY:-$ACORE_DIR/env/dist/bin/authserver}"
-AUTH_CONF="${AUTH_CONF:-$ACORE_DIR/env/dist/etc/authserver.conf}"
-AUTH_SESSION="${AUTH_SESSION:-auth-session}"
-AUTH_SERVICE_NAME="${AUTH_SERVICE_NAME:-azerothcore-auth.service}"
 
 update_control() { update_control_scripts auth-menu.sh; }
 
@@ -49,12 +44,6 @@ run_manager() {   # run_manager <script-basename> [args...]
 account_menu() { run_manager auth-tools.sh accounts; }
 realm_menu()   { run_manager auth-tools.sh realms; }
 
-apply_auth_values() {
-    apply_values "$SCRIPT_DIR/values/values_auth.conf" "$AUTH_CONF" || return 1
-    echo ""
-    echo "Changes apply on the next authserver restart."
-}
-
 config_menu() {
     while true; do
         submenu_title "📝  CONFIG & MAINTENANCE" "$COLOR_CONFIG"
@@ -74,31 +63,10 @@ config_menu() {
         read -rp "🔹  Choice [0-5]: " choice
         case "$choice" in
             1) "${EDITOR:-nano}" "$SCRIPT_DIR/values/values_auth.conf" ;;
-            2) run_step apply_auth_values ;;
+            2) run_step apply_values "$SCRIPT_DIR/values/values_auth.conf" "$AUTH_CONF" ;;
             3) "${EDITOR:-nano}" "$AUTH_CONF" ;;
             4) run_step apply_two_side_rbac ;;
             5) run_manager auth-tools.sh autoincrement ;;
-            0) return ;;
-            *) echo "Invalid option."; sleep 1 ;;
-        esac
-    done
-}
-
-build_menu() {
-    while true; do
-        submenu_title "🛠  BUILD TOOLS" "$COLOR_BUILD"
-        build_hint "$ACORE_DIR"
-        echo ""
-        echo -e "  ${COLOR_BUILD}[1]${RESET}  Pull git updates"
-        echo -e "  ${COLOR_BUILD}[2]${RESET}  Build and install"
-        echo -e "  ${COLOR_BUILD}[3]${RESET}  Clean build directory"
-        echo -e "  ${COLOR_BUILD}[0]${RESET}  Back"
-        echo ""; menu_footer
-        read -rp "🔹  Choice [0-3]: " choice
-        case "$choice" in
-            1) run_step git_update "$ACORE_DIR" ;;
-            2) run_step safe_build "$ACORE_DIR/build" "$ACORE_DIR" auth-only none ;;
-            3) run_step clean_build "$ACORE_DIR" ;;
             0) return ;;
             *) echo "Invalid option."; sleep 1 ;;
         esac
@@ -202,7 +170,7 @@ menu() {
             4) run_step kill_auth ;;
             5) clear; tmx attach -t "$AUTH_SESSION" 2>/dev/null || { echo "No active authserver tmux session."; wait_for_user; } ;;
             6) run_step autostart_auth ;;
-            7) build_menu ;;
+            7) build_menu "Pull git updates" auth-only none git_update "$ACORE_DIR" ;;
             8) account_menu ;;
             9) realm_menu ;;
             10) config_menu ;;

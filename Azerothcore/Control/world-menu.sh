@@ -10,13 +10,6 @@ reexec_as_owner "$0" "$@"
 # Interactive loop: a single failing status probe must not kill the menu.
 set +e
 
-WORLD_ENGINE="${WORLD_ENGINE:-$ACORE_DIR/apps/startup-scripts/src/run-engine}"
-WORLD_BINARY="${WORLD_BINARY:-$ACORE_DIR/env/dist/bin/worldserver}"
-WORLD_CONF="${WORLD_CONF:-$ACORE_DIR/env/dist/etc/worldserver.conf}"
-PLAYERBOTS_CONF="${PLAYERBOTS_CONF:-$ACORE_DIR/env/dist/etc/modules/playerbots.conf}"
-WORLD_SESSION="${WORLD_SESSION:-world-session}"
-WORLD_SERVICE_NAME="${WORLD_SERVICE_NAME:-azerothcore-world.service}"
-WORLD_TIMER_NAME="azerothcore-world-restart.service"
 RESTART_RUNNER="$SCRIPT_DIR/world-restart-runner.sh"
 
 update_control() { update_control_scripts world-menu.sh; }
@@ -172,39 +165,6 @@ char_db_console() {
     MYSQL_PWD="$pw" mysql -h "$h" -P "$p" -u "$u" "$db"
 }
 
-apply_world_values() {
-    apply_values "$SCRIPT_DIR/values/values_world.conf" "$WORLD_CONF" || return 1
-    echo ""
-    echo "Changes apply on the next worldserver restart."
-}
-
-apply_playerbots_values() {
-    apply_values "$SCRIPT_DIR/values/values_playerbots.conf" "$PLAYERBOTS_CONF" || return 1
-    echo ""
-    echo "Changes apply on the next worldserver restart."
-}
-
-build_menu() {
-    while true; do
-        submenu_title "🛠  BUILD TOOLS" "$COLOR_BUILD"
-        build_hint "$ACORE_DIR"
-        echo ""
-        echo -e "  ${COLOR_BUILD}[1]${RESET}  Pull git updates (core + Playerbots)"
-        echo -e "  ${COLOR_BUILD}[2]${RESET}  Build and install"
-        echo -e "  ${COLOR_BUILD}[3]${RESET}  Clean build directory"
-        echo -e "  ${COLOR_BUILD}[0]${RESET}  Back"
-        echo ""; menu_footer
-        read -rp "🔹  Choice [0-3]: " choice
-        case "$choice" in
-            1) run_step pull_updates ;;
-            2) run_step safe_build "$ACORE_DIR/build" "$ACORE_DIR" world-only static ;;
-            3) run_step clean_build "$ACORE_DIR" ;;
-            0) return ;;
-            *) echo "Invalid option."; sleep 1 ;;
-        esac
-    done
-}
-
 config_menu() {
     while true; do
         submenu_title "📝  CONFIG & MAINTENANCE" "$COLOR_CONFIG"
@@ -224,9 +184,9 @@ config_menu() {
         read -rp "🔹  Choice [0-5]: " choice
         case "$choice" in
             1) "${EDITOR:-nano}" "$SCRIPT_DIR/values/values_world.conf" ;;
-            2) run_step apply_world_values ;;
+            2) run_step apply_values "$SCRIPT_DIR/values/values_world.conf" "$WORLD_CONF" ;;
             3) "${EDITOR:-nano}" "$SCRIPT_DIR/values/values_playerbots.conf" ;;
-            4) run_step apply_playerbots_values ;;
+            4) run_step apply_values "$SCRIPT_DIR/values/values_playerbots.conf" "$PLAYERBOTS_CONF" ;;
             5) run_step edit_any_conf ;;
             0) return ;;
             *) echo "Invalid option."; sleep 1 ;;
@@ -293,7 +253,7 @@ menu() {
             7) clear; tmx attach -t "$WORLD_SESSION" 2>/dev/null || { echo "No active worldserver tmux session."; wait_for_user; } ;;
             8) run_step autostart_world ;;
             9) restart_timer ;;
-            10) build_menu ;;
+            10) build_menu "Pull git updates (core + Playerbots)" world-only static pull_updates ;;
             11) run_step delete_account ;;
             12) clear; char_db_console; wait_for_user ;;
             13) config_menu ;;

@@ -92,10 +92,10 @@ check_disk() {
 #      DEBIAN_FRONTEND is enough there. For the passwordless-sudo-as-user case
 #      that env is stripped at acore's inner sudo, so also flip debconf's own
 #      frontend setting for the duration and restore it afterwards.
-run_install_deps() {
-    local prev_frontend
-    # mysql-apt-config (pulled in by acore.sh install-deps) pre-depends on these
-    # and a minimal Debian has neither - dpkg -i would refuse the package.
+# mysql-apt-config pre-depends on gnupg/lsb-release, which a minimal Debian
+# lacks (dpkg -i would refuse it); curl fetches it in menu 6. Preseed its
+# answers so its whiptail dialog never opens.
+preseed_mysql_apt_config() {
     apt_get install -y ca-certificates curl gnupg lsb-release
     sudo debconf-set-selections <<'EOF'
 mysql-apt-config mysql-apt-config/select-server select mysql-8.4-lts
@@ -104,6 +104,11 @@ mysql-apt-config mysql-apt-config/select-tools select Enabled
 mysql-apt-config mysql-apt-config/repo-codename select
 mysql-apt-config mysql-apt-config/repo-distro select debian
 EOF
+}
+
+run_install_deps() {
+    local prev_frontend
+    preseed_mysql_apt_config
     prev_frontend="$(sudo debconf-show debconf 2>/dev/null | sed -n 's/^[* ] debconf\/frontend: //p')"
     echo 'debconf debconf/frontend select Noninteractive' | sudo debconf-set-selections
     (
@@ -237,53 +242,28 @@ EOF
     }
 
     if [ "$role" = auth ]; then
-        sudo install -m 0755 "$src/auth-menu.sh" "$target/auth-menu.sh"
         sudo install -m 0755 "$src/auth-tools.sh" "$target/auth-tools.sh"
         keep_values values_auth.conf
-        menu="$target/auth-menu.sh"
-        sudo tee "$target/control.conf" >/dev/null <<EOF
-ACORE_DIR='$acore'
-SERVER_USER='$owner'
-CONTROL_SOURCE_DIR='$src'
-CONTROL_TMUX_L='acore-auth'
-AUTH_MENU='$menu'
-AUTH_ENGINE="\$ACORE_DIR/apps/startup-scripts/src/run-engine"
-AUTH_BINARY="\$ACORE_DIR/env/dist/bin/authserver"
-AUTH_CONF="\$ACORE_DIR/env/dist/etc/authserver.conf"
-AUTH_SESSION='auth-session'
-AUTH_SERVICE_NAME='azerothcore-auth.service'
-EOF
-        sudo tee /usr/local/bin/authmenu >/dev/null <<EOF
-#!/usr/bin/env bash
-exec '$menu' "\$@"
-EOF
-        sudo chmod 0755 /usr/local/bin/authmenu
     else
-        sudo install -m 0755 "$src/world-menu.sh" "$target/world-menu.sh"
         sudo install -m 0755 "$src/world-restart-runner.sh" "$target/world-restart-runner.sh"
         keep_values values_world.conf
         keep_values values_playerbots.conf
-        menu="$target/world-menu.sh"
-        sudo tee "$target/control.conf" >/dev/null <<EOF
+    fi
+    menu="$target/$role-menu.sh"
+    sudo install -m 0755 "$src/$role-menu.sh" "$menu"
+    # Only what differs per box; the standard paths/names default in common.sh.
+    sudo tee "$target/control.conf" >/dev/null <<EOF
 ACORE_DIR='$acore'
 SERVER_USER='$owner'
 CONTROL_SOURCE_DIR='$src'
-CONTROL_TMUX_L='acore-world'
-WORLD_MENU='$menu'
-WORLD_ENGINE="\$ACORE_DIR/apps/startup-scripts/src/run-engine"
-WORLD_BINARY="\$ACORE_DIR/env/dist/bin/worldserver"
-WORLD_CONF="\$ACORE_DIR/env/dist/etc/worldserver.conf"
-PLAYERBOTS_CONF="\$ACORE_DIR/env/dist/etc/modules/playerbots.conf"
-WORLD_SESSION='world-session'
-WORLD_SERVICE_NAME='azerothcore-world.service'
-WORLD_TIMER_NAME='azerothcore-world-restart.service'
+CONTROL_TMUX_L='acore-$role'
+${role^^}_MENU='$menu'
 EOF
-        sudo tee /usr/local/bin/worldmenu >/dev/null <<EOF
+    sudo tee "/usr/local/bin/${role}menu" >/dev/null <<EOF
 #!/usr/bin/env bash
 exec '$menu' "\$@"
 EOF
-        sudo chmod 0755 /usr/local/bin/worldmenu
-    fi
+    sudo chmod 0755 "/usr/local/bin/${role}menu"
 
     sudo chown -R "$owner:$owner" "$target"
     echo "$role Control installed: $target"
@@ -899,17 +879,7 @@ setup_mysql_apt_repo() {
     fi
     step "Add MySQL 8.4 APT repository"
     apt_get update
-    # curl to fetch the .deb; gnupg and lsb-release are pre-dependencies of
-    # mysql-apt-config and are not on a minimal Debian (dpkg -i refuses to
-    # install the package without them).
-    apt_get install -y ca-certificates curl gnupg lsb-release
-    sudo debconf-set-selections <<'EOF'
-mysql-apt-config mysql-apt-config/select-server select mysql-8.4-lts
-mysql-apt-config mysql-apt-config/select-product select Ok
-mysql-apt-config mysql-apt-config/select-tools select Enabled
-mysql-apt-config mysql-apt-config/repo-codename select
-mysql-apt-config mysql-apt-config/repo-distro select debian
-EOF
+    preseed_mysql_apt_config
     local deb
     deb="$(mktemp --suffix=.deb)"
     curl -fsSL -o "$deb" \

@@ -12,7 +12,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/common.sh"
 set +e
 
-SESSION="${WORLD_SESSION:-world-session}"
+SESSION="$WORLD_SESSION"
 
 log() { echo "[$(date '+%F %T')] $*"; }
 wait_until() { local t="$1"; while [ "$(date +%s)" -lt "$t" ]; do sleep 5; done; }
