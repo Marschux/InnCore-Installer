@@ -122,8 +122,7 @@ run_step() {   # run_step "<script or function>" [args...]
 }
 
 # Fixed-width label so the status block lines up regardless of icon/word width.
-# realmlist.flag is a bitmask, so a plain lookup only ever labels single bits -
-# 34 (offline + new) fell through as "flag 34". Decode every set bit instead.
+# realmlist.flag is a bitmask: decode every set bit (34 = offline + new).
 # Bit 2 is the worldserver's own online/offline marker, not something the
 # operator sets: it only shows when no other flag is set, so 34 reads "New".
 realm_flag_names() {   # realm_flag_names <flag>
@@ -176,7 +175,7 @@ autostart_dot() {   # autostart_dot <service-name>
 
 # Header row: the AzerothCore checkout's branch and commit, plus whether origin
 # carries newer ones. The fetch runs detached in the background with its result
-# cached in a file - the menu repaints far too often (and on a 60s read timeout)
+# cached in a file: the menu repaints far too often (and on a 60s read timeout)
 # to touch the network from the render path. The job's output goes to
 # <cache>.log so a header stuck on "unknown" can be explained without re-running
 # the fetch by hand.
@@ -320,7 +319,7 @@ server_start() {
 # Boot and shutdown both happen inside tmux (DB updates, map loading, bot
 # generation, the shutdown countdown and the database drain) while the menu only
 # prints "started"/"waiting". Attach so it can be watched live; detaching with
-# Ctrl-B D - or the session ending on shutdown - continues the menu flow.
+# Ctrl-B D (or the session ending on shutdown) continues the menu flow.
 # Menu only and only on a real terminal, so the restart runner and any scripted
 # call keep running unattended.
 console_follow() {   # console_follow <session>
@@ -344,7 +343,7 @@ server_log() {   # server_log <process>
     return 1
 }
 
-# utime+stime in clock ticks - the log alone can't tell a hung process from one
+# utime+stime in clock ticks; the log alone can't tell a hung process from one
 # that is quietly draining its database queue.
 proc_cpu_ticks() {   # proc_cpu_ticks <process>
     local pid; pid="$(pgrep -x "$1" | head -n1)"
@@ -432,7 +431,7 @@ server_stop() {
 }
 
 # Wait (bounded) for the server's listen port to be free again instead of a flat
-# sleep - a restart that races the old process fails to bind.
+# sleep: a restart that races the old process fails to bind.
 wait_for_port_release() {   # wait_for_port_release <conf>
     local conf="$1" port i
     port="$(grep -hE '^[[:space:]]*(RealmServerPort|WorldServerPort)[[:space:]]*=' "$conf" 2>/dev/null \

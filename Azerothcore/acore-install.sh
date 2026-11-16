@@ -14,7 +14,7 @@
 #    This script mirrors the guides step for step. It is NOT fully            #
 #    unattended: at points where the guides require a manual decision         #
 #    (DB password, client-data extraction) it pauses and asks you to          #
-#    confirm. The final menu start flow is not part of this script -          #
+#    confirm. The final menu start flow is not part of this script:          #
 #    see ../README.md.                                                        #
 #                                                                              #
 ################################################################################
@@ -211,7 +211,7 @@ install_control_role() {
 
     # 'Update Control scripts' runs `git pull` in this checkout as $owner, which
     # needs write access to .git/ and the working tree. Only take ownership when
-    # $owner can't already write it - and say so, since this recursively chowns
+    # $owner can't already write it, and say so, since this recursively chowns
     # whoever's checkout this is.
     repo_root="$(git -C "$src" rev-parse --show-toplevel 2>/dev/null || true)"
     if [ -n "$repo_root" ] && ! sudo -u "$owner" test -w "$repo_root/.git" 2>/dev/null; then
@@ -231,7 +231,7 @@ EOF
     # keep_values: copy a values/ summary only if it is not there yet, so a
     # re-install / "Update Control scripts" never overwrites the operator's edits.
     # Install a values summary if absent, and always (re)write its .base sidecar
-    # to the template just placed - 'Update Control scripts' 3-way-merges against
+    # to the template just placed: 'Update Control scripts' 3-way-merges against
     # it so template changes reach the box without clobbering operator edits.
     keep_values() {
         [ -f "$target/values/$1" ] || sudo install -D -o "$owner" -g "$owner" -m 0644 "$src/values/$1" "$target/values/$1"
@@ -239,7 +239,7 @@ EOF
         # The templates ship a literal "password" in their *DatabaseInfo lines;
         # applying such a summary from the menu would overwrite the working
         # credentials in authserver.conf / worldserver.conf. The .base sidecar
-        # keeps the placeholder on purpose - it is the merge baseline, so the
+        # keeps the placeholder on purpose: it is the merge baseline, so the
         # real password below counts as an operator edit and survives updates.
         if [ -n "${DB_PASS:-}" ]; then write_conf_db_password "$target/values/$1"; fi
         write_conf_login_db "$target/values/$1"
@@ -327,7 +327,7 @@ strip_existing_mysql_tuning() {
     [ -f "$cnf" ] || return 0
     if grep -qF "$MYSQL_TUNING_BEGIN" "$cnf"; then
         warn "Existing AzerothCore MySQL tuning found - replacing it with the new profile."
-        # Only the block between our markers - anything the operator added below
+        # Only the block between our markers; anything the operator added below
         # it stays. `\` before the literal markers keeps sed from reading the
         # '>>>' as an address.
         sudo sed -i "\\|${MYSQL_TUNING_BEGIN}|,\\|${MYSQL_TUNING_END}|d" "$cnf"
@@ -511,8 +511,8 @@ collect_world_inputs() {
 # The worldserver reads the auth database over the network when it runs on its
 # own LXC. Ask for that box here, so worldserver.conf and values_world.conf get
 # a working LoginDatabaseInfo instead of the 127.0.0.1 placeholder. Runs after
-# collect_database_password - the auth password defaults to the one just given.
-# Skipped for a Both install - auth's MySQL is then local anyway.
+# collect_database_password; the auth password defaults to the one just given.
+# Skipped for a Both install: auth's MySQL is then local anyway.
 collect_auth_db_inputs() {
     [ -n "${AUTH_DIR:-}" ] && return 0
     echo ""
@@ -557,7 +557,7 @@ collect_database_password() {
 # The shipped *.conf.dist carry a literal "acore" as the password in every
 # *DatabaseInfo line ("host;port;user;PASS;db"). Copying the dist file verbatim
 # (steps 7/8 below) leaves auth/worldserver unable to connect once the operator
-# picks any other password. Rewrite field 4 of each DatabaseInfo line - the '^'
+# picks any other password. Rewrite field 4 of each DatabaseInfo line; the '^'
 # anchor skips the commented example lines, [A-Za-z]*DatabaseInfo covers
 # Login/World/Character.
 write_conf_db_password() {   # write_conf_db_password <conf-file>
@@ -569,7 +569,7 @@ write_conf_db_password() {   # write_conf_db_password <conf-file>
 
 # Point the LoginDatabaseInfo line at the auth box collected above. Runs after
 # write_conf_db_password, which has just set every DatabaseInfo password to the
-# local one - the login line needs the auth LXC's host and its own password.
+# local one; the login line needs the auth LXC's host and its own password.
 write_conf_login_db() {   # write_conf_login_db <conf-file>
     local conf="$1" d=$'\x1f' esc
     [ -f "$conf" ] || return 0
@@ -873,8 +873,8 @@ run_bothserver() {
 ################################################################################
 
 # Add the MySQL 8.4 LTS APT repo the way acore.sh install-deps does for the
-# server builds. Menu 6 has no AzerothCore checkout, so it has to do this itself
-# - Debian ships no 'mysql-server', only MariaDB, and setup_database's tuning
+# server builds. Menu 6 has no AzerothCore checkout, so it has to do this itself:
+# Debian ships no 'mysql-server', only MariaDB, and setup_database's tuning
 # block needs MySQL 8.x (innodb_redo_log_capacity).
 MYSQL_APT_CONFIG_VERSION="${MYSQL_APT_CONFIG_VERSION:-0.8.36-1}"
 setup_mysql_apt_repo() {
@@ -986,7 +986,7 @@ main() {
                 collect_database_password
                 ask_install_control both
                 run_bothserver
-                # One exec only - offering both is pointless, the first exec
+                # One exec only: offering both is pointless, the first exec
                 # replaces this process. Let the user pick.
                 echo ""
                 read -rp "Open a menu now? [a]uthmenu / [w]orldmenu / [n]o: " ans

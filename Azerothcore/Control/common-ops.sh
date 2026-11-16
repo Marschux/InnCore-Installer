@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Control toolkit, part 2: the rarely-used helpers - git update / build /
+# Control toolkit, part 2: the rarely-used helpers: git update / build /
 # build-tree cleanup / script self-update, auth-DB access (accounts, RBAC,
 # SRP6), the values-summary merge / apply, .conf editor and the daily-restart
 # schedule. Sourced by common.sh; never sourced directly.
@@ -65,7 +65,7 @@ update_control_scripts() {   # update_control_scripts <menu-basename>
         branch="$(gitq "$src" rev-parse --abbrev-ref HEAD 2>/dev/null)"
         remote="$(gitq "$src" remote get-url origin 2>/dev/null)"
         echo "Fetching $branch from ${remote:-origin} ..."
-        # This checkout is only a distribution point - force it to match the
+        # This checkout is only a distribution point; force it to match the
         # remote so line-ending churn or a stray edit can't block the update.
         if gitq "$src" fetch --prune origin "$branch"; then
             gitq "$src" reset --hard "origin/$branch" \
@@ -130,7 +130,7 @@ safe_build() {   # safe_build <build-dir> <repo-dir> <apps-build> <scripts>
     local dir="$1" repo="${2:-}" apps="${3:-all}" scripts="${4:-static}"
     require_path "$repo" || return 1
     mkdir -p "$dir" || return 1
-    # No configured build tree (fresh box or after 'Clean build directory') -
+    # No configured build tree (fresh box or after 'Clean build directory'):
     # run CMake first, same flags the installer used.
     if [ ! -f "$dir/CMakeCache.txt" ]; then
         echo "No build tree yet - running CMake configure ($apps, scripts=$scripts)..."
@@ -149,7 +149,7 @@ safe_build() {   # safe_build <build-dir> <repo-dir> <apps-build> <scripts>
 }
 
 # Wipe only <acore-dir>/build, after a typed confirmation. Source and Control
-# scripts outside build are untouched. (Folded in from the old clean-build.sh.)
+# scripts outside build are untouched.
 clean_build() {   # clean_build <acore-dir>
     local acore="${1:-}" build confirmation
     case "$acore" in
@@ -179,7 +179,7 @@ clean_build() {   # clean_build <acore-dir>
 
 # Links RBAC permission 195 to every "Two side ..." permission in the auth DB.
 # The AllowTwoSide.Interaction.* flags in worldserver.conf alone do NOT enable
-# cross-faction group/guild/chat - the DB permission has to be linked too.
+# cross-faction group/guild/chat; the DB permission has to be linked too.
 apply_two_side_rbac() {
     mysql_auth -N -s -e "SHOW TABLES LIKE 'rbac_permissions';" 2>/dev/null | grep -q rbac_permissions \
         || { echo "rbac_permissions not found - start the authserver once so it creates the schema."; return 1; }
@@ -194,7 +194,7 @@ apply_two_side_rbac() {
 # Reads LoginDatabaseInfo (host;port;user;pass;db). The auth menu passes
 # authserver.conf via $AUTH_CONF; the world menu has no $AUTH_CONF, so fall back
 # to worldserver.conf ($WORLD_CONF) which carries the same line pointing at the
-# auth DB. Without the fallback `worldmenu -> Delete account` died on `set -u`.
+# auth DB.
 read_login_database() {
     local conf="${1:-}" line
     [ -n "$conf" ] || conf="${AUTH_CONF:-}"
@@ -235,7 +235,7 @@ mysql_auth() {
 # --- autostart unit, restart schedule, values merge / .conf editor ------
 
 # Enable/disable a boot autostart oneshot that drives one role's menu wrapper.
-# Shared by auth and world - only the unit name, description and wrapper differ.
+# Shared by auth and world; only the unit name, description and wrapper differ.
 autostart_toggle() {   # autostart_toggle <service> <description> <menu-wrapper> [after-units]
     local svc="$1" desc="$2" wrapper="$3" after="${4:-network-online.target mysql.service mysqld.service}" c state
     if systemctl is-enabled --quiet "$svc" 2>/dev/null; then
@@ -256,9 +256,8 @@ autostart_toggle() {   # autostart_toggle <service> <description> <menu-wrapper>
     read -rp "🔹  Choice [0-2]: " c
     case "$c" in
         1)
-            # Probe with a call the installed sudoers grant actually allows
-            # (daemon-reload is idempotent). `systemctl --version` is NOT in the
-            # grant, so probing with it always failed and blocked enabling.
+            # Probe with a call the installed sudoers grant allows (daemon-reload
+            # is idempotent; `systemctl --version` is not granted).
             sudo -n systemctl daemon-reload >/dev/null 2>&1 \
                 || { echo "Passwordless sudo for systemctl is not set up - re-run the installer."; return 1; }
             sudo tee "/etc/systemd/system/$svc" >/dev/null <<EOF
@@ -491,7 +490,7 @@ build_menu() {   # build_menu <pull-label> <apps-build> <scripts> <pull-command.
 }
 
 # Pick and edit any .conf under the AzerothCore etc tree (worldserver.conf plus
-# every module conf) - covers plugins added later that ship their own conf.
+# every module conf), including plugins added later that ship their own conf.
 edit_any_conf() {
     local dir="$ACORE_DIR/env/dist/etc" files sel i=1 f
     mapfile -t files < <(find "$dir" -maxdepth 2 -name '*.conf' ! -name '*.conf.dist' 2>/dev/null | sort)

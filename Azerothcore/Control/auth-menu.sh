@@ -4,7 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/common.sh"
 
-# git and the tmux session belong to SERVER_USER - re-run as them if invoked as root.
+# git and the tmux session belong to SERVER_USER; re-run as them if invoked as root.
 reexec_as_owner "$0" "$@"
 
 # Interactive loop: a single failing status probe must not kill the menu.
@@ -76,7 +76,7 @@ config_menu() {
 # Realms registered in acore_auth.realmlist. Silent when the DB is unreachable
 # (not created yet, authserver never started) so the header never breaks.
 # Cached for 15s: the menu repaints on a 60s timeout and after every action, and
-# the realmlist changes rarely - stale-but-instant beats a frozen menu when the
+# the realmlist changes rarely; stale-but-instant beats a frozen menu when the
 # DB is slow or down.
 realm_header() {
     local cache="${TMPDIR:-/tmp}/acore-realmhdr.${CONTROL_TMUX_L:-auth}"

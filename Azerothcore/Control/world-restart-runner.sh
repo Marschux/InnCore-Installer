@@ -18,7 +18,7 @@ log() { echo "[$(date '+%F %T')] $*"; }
 wait_until() { local t="$1"; while [ "$(date +%s)" -lt "$t" ]; do sleep 5; done; }
 
 # No times configured: don't exit (Restart=always would respawn us every 60s in
-# a tight loop). Sleep, then exit so systemd re-checks in ~an hour - a time
+# a tight loop). Sleep, then exit so systemd re-checks in ~an hour, so a time
 # added later still gets picked up without a respawn storm.
 nd="$(restart_next)" || { log "No restart times configured - sleeping 1h before re-check."; sleep 3600; exit 0; }
 IFS=';' read -r target time lead <<< "$nd"

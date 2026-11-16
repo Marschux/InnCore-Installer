@@ -3,7 +3,7 @@
 # ==================================================
 # AZEROTHCORE AUTH TOOLS
 # Account, GM-level and AUTO_INCREMENT management plus the realmlist and MOTD
-# tables - all in the auth database. Launched from auth-menu.sh:
+# tables, all in the auth database. Launched from auth-menu.sh:
 #   auth-tools.sh accounts   -> account menu
 #   auth-tools.sh realms     -> realmlist & MOTD menu
 #   auth-tools.sh autoincrement -> account AUTO_INCREMENT

@@ -4,7 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/common.sh"
 
-# git and the tmux session belong to SERVER_USER - re-run as them if invoked as root.
+# git and the tmux session belong to SERVER_USER; re-run as them if invoked as root.
 reexec_as_owner "$0" "$@"
 
 # Interactive loop: a single failing status probe must not kill the menu.
