@@ -1,0 +1,18 @@
+name: check
+
+on: [push, pull_request]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: Azerothcore/Control
+    steps:
+      - uses: actions/checkout@v4
+      # Entry scripts only: -x follows them into common.sh / common-ops.sh, so
+      # variables defined there and used by the menus are not reported as unused.
+      - name: shellcheck
+        run: shellcheck -x -S warning auth-menu.sh world-menu.sh world-restart-runner.sh auth-tools.sh test-common-ops.sh ../acore-install.sh
+      - name: self-test
+        run: bash test-common-ops.sh

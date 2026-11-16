@@ -5,7 +5,7 @@
 # No framework, no network, no server. Run: bash test-common-ops.sh
 
 set -u
-cd "$(dirname "${BASH_SOURCE[0]}")"
+cd "$(dirname "${BASH_SOURCE[0]}")" || exit 1
 
 # Point the conf paths at a scratch dir before sourcing (the file reads them at
 # load time), then pull in just the helpers.
@@ -132,7 +132,7 @@ chk "escape_sql" "$(escape_sql "O'Neil''s")" "O''Neil''''s"
 # realmlist decoders from common.sh (sourcing it needs a control.conf, so pull
 # just the two functions).
 eval "$(sed -n '/^realm_flag_names()/,/^}/p;/^realm_type_name()/,/^}/p' common.sh)"
-realm_flag_names r 0;   chk "flag 0"   "$r" "Online"
+r=""; realm_flag_names r 0;   chk "flag 0"   "$r" "Online"
 realm_flag_names r 2;   chk "flag 2"   "$r" "Offline"
 realm_flag_names r 34;  chk "flag 34"  "$r" "New"
 realm_flag_names r 65;  chk "flag 65"  "$r" "Invalid+Recommended"
