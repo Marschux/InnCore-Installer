@@ -234,6 +234,31 @@ mysql_auth() {
     MYSQL_PWD="$DB_PASS" mysql -h "$DB_HOST" -P "$DB_PORT" -u "$DB_USER" "$DB_NAME" "$@"
 }
 
+# Delete one account and its account_access (GM) rows after a typed DELETE.
+# Lives here, not in auth-tools.sh: a world-only box has no auth-tools but its
+# menu offers the same action. Without args it asks for a name or ID first.
+delete_account() {   # delete_account [<id> <name>]
+    local id="${1:-}" name="${2:-}" in where row q="'"
+    if [ -z "$id" ]; then
+        read -rp "🔹  Account name or ID to delete: " in
+        _trim in "${in^^}"
+        [ -n "$in" ] || { echo -e "${RED}❌ Input must not be empty.${RESET}"; return 1; }
+        if [[ "$in" =~ ^[0-9]+$ ]]; then where="id=$in"; else where="username='${in//$q/$q$q}'"; fi
+        row="$(mysql_auth -N -s -e "SELECT id, username FROM account WHERE $where LIMIT 1;")" || return 1
+        [ -n "$row" ] || { echo -e "${RED}❌ Account not found.${RESET}"; return 1; }
+        IFS=$'\t' read -r id name <<< "$row"
+    fi
+    echo -e "${YELLOW}⚠️  About to delete account ${RED}[$id] $name${RESET}"
+    echo -e "${YELLOW}   and every account_access (GM) row it owns.${RESET}"
+    confirm_word DELETE || return 0
+    if mysql_auth -e "DELETE FROM account WHERE id=$id; DELETE FROM account_access WHERE id=$id;"; then
+        echo -e "${GREEN}✅ Account deleted:${RESET} [$id] $name"
+    else
+        echo -e "${RED}❌ Failed to delete account.${RESET}"
+        return 1
+    fi
+}
+
 # --- autostart unit, restart schedule, values merge / .conf editor ------
 
 # Enable/disable a boot autostart oneshot that drives one role's menu wrapper.

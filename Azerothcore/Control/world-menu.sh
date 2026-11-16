@@ -142,13 +142,6 @@ restart_timer() {
     done
 }
 
-delete_account() {
-    read_login_database || { echo "Could not read LoginDatabaseInfo."; return 1; }
-    read -rp "Account ID to delete: " id
-    [[ "$id" =~ ^[0-9]+$ ]] || { echo "Invalid account ID."; return 1; }
-    confirm_word DELETE && mysql_auth -e "DELETE FROM account WHERE id=$id; DELETE FROM account_access WHERE id=$id;" && echo "Account deleted."
-}
-
 # Interactive MySQL shell into the character database (CharacterDatabaseInfo
 # from worldserver.conf).
 char_db_console() {

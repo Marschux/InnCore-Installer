@@ -168,6 +168,13 @@ launch_menu() {
     exec sudo "$wrapper"
 }
 
+# Field <n> (1=host 2=port 3=user 4=pass 5=db) of the last uncommented
+# '<Key> = "h;p;u;pw;db"' line in <conf>; empty when there is none.
+conf_db_field() {   # conf_db_field <key-regex> <n> <conf>
+    sed -nE "s/^[[:space:]]*$1[[:space:]]*=[[:space:]]*\"([^\"]*)\".*/\\1/p" "$3" 2>/dev/null \
+        | tail -1 | cut -d';' -f"$2" || true
+}
+
 # Installs the Control menu for one role. All four arguments are required;
 # menu item 5 collects them interactively, the post-build flow passes what was
 # gathered up front.
@@ -185,19 +192,17 @@ install_control_role() {
     # Password used to patch the values summaries below. On a standalone
     # install (menu 5) nothing is in memory, so read it back out of the
     # server's own conf. Shadowed locally so it never leaks past this call.
+    local conf="$acore/env/dist/etc/${role}server.conf"
     local DB_PASS="${DB_PASS:-}"
-    [ -n "$DB_PASS" ] || DB_PASS="$(sed -nE 's/^[[:space:]]*[A-Za-z]*DatabaseInfo[[:space:]]*=[[:space:]]*"[^";]*;[^";]*;[^";]*;([^";]*);.*/\1/p' \
-        "$acore/env/dist/etc/${role}server.conf" 2>/dev/null | tail -1)"
+    [ -n "$DB_PASS" ] || DB_PASS="$(conf_db_field '[A-Za-z]*DatabaseInfo' 4 "$conf")"
     [ -n "$DB_PASS" ] || warn "No DB password found - values_*.conf keep the \"password\" placeholder."
 
     # Same for the auth box behind LoginDatabaseInfo, so values_world.conf keeps
     # pointing there instead of falling back to the 127.0.0.1 placeholder.
     local AUTH_DB_HOST="${AUTH_DB_HOST:-}" AUTH_DB_PASS="${AUTH_DB_PASS:-}"
     if [ "$role" = world ] && [ -z "$AUTH_DB_HOST" ]; then
-        AUTH_DB_HOST="$(sed -nE 's/^[[:space:]]*LoginDatabaseInfo[[:space:]]*=[[:space:]]*"([^";]*);.*/\1/p' \
-            "$acore/env/dist/etc/worldserver.conf" 2>/dev/null | tail -1)"
-        AUTH_DB_PASS="$(sed -nE 's/^[[:space:]]*LoginDatabaseInfo[[:space:]]*=[[:space:]]*"[^";]*;[^";]*;[^";]*;([^";]*);.*/\1/p' \
-            "$acore/env/dist/etc/worldserver.conf" 2>/dev/null | tail -1)"
+        AUTH_DB_HOST="$(conf_db_field LoginDatabaseInfo 1 "$conf")"
+        AUTH_DB_PASS="$(conf_db_field LoginDatabaseInfo 4 "$conf")"
     fi
 
     sudo install -d -o "$owner" -g "$owner" "$target"

@@ -35,6 +35,14 @@ ask_yes() {   # ask_yes <question> [cancel-message]
     return 1
 }
 
+# Prompt with a default into <var>; "num" also rejects non-integers.
+ask_field() {   # ask_field <var> <label> <default> [num]
+    local _v
+    read -p "🔹 $2 [$3]: " _v
+    printf -v "$1" '%s' "${_v:-$3}"
+    [ -z "${4:-}" ] || validate_number "${!1}" "$2"
+}
+
 validate_number() {
     local value="$1"
     local name="$2"
@@ -614,19 +622,8 @@ show_account_flow() {
 
 delete_account_flow() {
     prompt_account "DELETE ACCOUNT" || return 1
-    local account_id="$ACC_ID" account_name="$ACC_NAME"
-
     echo ""
-    echo -e "${YELLOW}⚠️  About to delete account ${RED}[$account_id] $account_name${NC}"
-    echo -e "${YELLOW}   and every account_access (GM) row it owns.${NC}"
-    confirm_word DELETE || return 0
-
-    if mysql_auth -e "DELETE FROM account WHERE id=$account_id; DELETE FROM account_access WHERE id=$account_id;"; then
-        echo -e "${GREEN}✅ Account deleted:${NC} [$account_id] $account_name"
-    else
-        echo -e "${RED}❌ Failed to delete account.${NC}"
-        return 1
-    fi
+    delete_account "$ACC_ID" "$ACC_NAME"   # common-ops.sh
 }
 
 # --------------------------------------------------
@@ -754,7 +751,7 @@ get_realm_type_name() {
         1) echo "PvP" ;;
         4) echo "Normal" ;;
         6) echo "RP" ;;
-        8) echo "RPPvP" ;;
+        8) echo "RP PvP" ;;
         *) echo "Unknown" ;;
     esac
 }
@@ -856,9 +853,7 @@ add_or_update_realm() {
     echo -e "💡  Next free realm ID: ${GREEN}$next_id${NC}"
     echo ""
 
-    read -p "🔹 Realm ID [$next_id]: " realm_id
-    realm_id=${realm_id:-$next_id}
-    validate_number "$realm_id" "Realm ID" || return 1
+    ask_field realm_id "Realm ID" "$next_id" num || return 1
 
     existing_row=$(mysql_auth --batch --skip-column-names -e "
         SELECT name, address, localAddress, localSubnetMask, port, icon, flag, timezone, allowedSecurityLevel, gamebuild
@@ -887,58 +882,42 @@ add_or_update_realm() {
         def_build=12340
     fi
 
-    read -p "🔹 Realm name [$def_name]: " realm_name
-    realm_name=${realm_name:-"$def_name"}
+    ask_field realm_name "Realm name" "$def_name"
 
     echo ""
     echo -e "${YELLOW}💡 address:${NC} Public WAN IP, VPN IP or domain for external clients."
-    read -p "🔹 Address [$def_address]: " address
-    address=${address:-"$def_address"}
+    ask_field address "Address" "$def_address"
 
     echo ""
     echo -e "${YELLOW}💡 localAddress:${NC} LAN or internal VPN address for local clients."
-    read -p "🔹 Local address [$def_local_address]: " local_address
-    local_address=${local_address:-"$def_local_address"}
+    ask_field local_address "Local address" "$def_local_address"
 
-    read -p "🔹 Local subnet mask [$def_netmask]: " netmask
-    netmask=${netmask:-"$def_netmask"}
+    ask_field netmask "Local subnet mask" "$def_netmask"
 
     echo ""
     echo -e "${YELLOW}💡 port:${NC} Worldserver port. Default: 8085."
-    read -p "🔹 Port [$def_port]: " port
-    port=${port:-$def_port}
-    validate_number "$port" "Port" || return 1
+    ask_field port "Port" "$def_port" num || return 1
 
     echo ""
     echo -e "${YELLOW}💡 icon:${NC} 0=Normal/PvE, 1=PvP, 4=Normal, 6=RP, 8=RP-PvP"
-    read -p "🔹 Icon [$def_icon]: " icon
-    icon=${icon:-$def_icon}
-    validate_number "$icon" "Icon" || return 1
+    ask_field icon "Icon" "$def_icon" num || return 1
 
     echo ""
     echo -e "${YELLOW}💡 flag:${NC} 0=None, 1=Invalid, 2=Offline, 4=Build, 8=Medium, 16=Medium, 32=New, 64=Recommended, 128=Full"
     echo -e "${YELLOW}   Note:${NC} the worldserver clears/sets bit 2 itself on start/shutdown."
-    read -p "🔹 Flag [$def_flag]: " flag
-    flag=${flag:-$def_flag}
-    validate_number "$flag" "Flag" || return 1
+    ask_field flag "Flag" "$def_flag" num || return 1
 
     echo ""
     echo -e "${YELLOW}💡 timezone:${NC} 9=German, 8=English, 10=French, 11=Spanish, 12=Russian, 26=Test Server"
-    read -p "🔹 Timezone [$def_timezone]: " timezone
-    timezone=${timezone:-$def_timezone}
-    validate_number "$timezone" "Timezone" || return 1
+    ask_field timezone "Timezone" "$def_timezone" num || return 1
 
     echo ""
     echo -e "${YELLOW}💡 allowedSecurityLevel:${NC} 0=Player, 1=Moderator, 2=Gamemaster, 3=Administrator, 4=Console"
-    read -p "🔹 Security level [$def_security]: " security
-    security=${security:-$def_security}
-    validate_number "$security" "Security level" || return 1
+    ask_field security "Security level" "$def_security" num || return 1
 
     echo ""
     echo -e "${YELLOW}💡 gamebuild:${NC} 12340 = WoW 3.3.5a"
-    read -p "🔹 Gamebuild [$def_build]: " build
-    build=${build:-$def_build}
-    validate_number "$build" "Gamebuild" || return 1
+    ask_field build "Gamebuild" "$def_build" num || return 1
 
     echo ""
     box_title "REALM SUMMARY"
