@@ -393,8 +393,10 @@ server_stop() {
         return 0
     fi
 
+    # Byte offsets, not line counts: Server.log is never rotated and reaches
+    # GBs, and wc -l / tail -n +N rescan the whole file every second of the wait.
     log="$(server_log "$process" 2>/dev/null || true)"
-    if [ -n "$log" ]; then mark="$(wc -l < "$log" 2>/dev/null || echo 0)"; fi
+    if [ -n "$log" ]; then mark="$(stat -c %s "$log" 2>/dev/null || echo 0)"; fi
 
     # send=0: the caller already issued its own shutdown (the restart runner
     # sends an announce + timed `server shutdown`); just wait it out and verify.
@@ -418,10 +420,10 @@ server_stop() {
         sleep 1; waited=$((waited + 1))
         cpu="$(proc_cpu_ticks "$process")"
         size="$last_size"
-        if [ -n "$log" ]; then size="$(wc -l < "$log" 2>/dev/null || echo "$last_size")"; fi
+        if [ -n "$log" ]; then size="$(stat -c %s "$log" 2>/dev/null || echo "$last_size")"; fi
 
         if [ "$draining" -eq 0 ] && [ -n "$log" ] \
-           && tail -n +"$((mark + 1))" "$log" 2>/dev/null | grep -q "Closing down DatabasePool"; then
+           && tail -c +"$((mark + 1))" "$log" 2>/dev/null | grep -q "Closing down DatabasePool"; then
             draining=1
             echo -e "${CYAN}💾  Writing pending database queries - will not interrupt this.${RESET}"
         fi
@@ -442,7 +444,7 @@ server_stop() {
         echo -e "${CYAN}🧹  Closing tmux session: ${session}${RESET}"
         tmx kill-session -t "$session" 2>/dev/null || true
     fi
-    if [ -n "$log" ] && ! tail -n +"$((mark + 1))" "$log" 2>/dev/null | grep -q "All connections on DatabasePool .* closed"; then
+    if [ -n "$log" ] && ! tail -c +"$((mark + 1))" "$log" 2>/dev/null | grep -q "All connections on DatabasePool .* closed"; then
         echo -e "${YELLOW}⚠️  ${name} stopped, but the log does not show the database pools closing.${RESET}"
         echo -e "${YELLOW}    Check $log before trusting the last save.${RESET}"
     else
