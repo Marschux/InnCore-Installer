@@ -371,9 +371,6 @@ merge_values() {   # merge_values <template> <dst>
         install -m 0644 "$tpl" "$dst"; cp "$tpl" "$base"
         echo "  + $(basename "$dst") (new)"; return 0
     fi
-    # First run under this scheme: no baseline yet - assume dst started from a
-    # matching template, i.e. any difference now is an operator change.
-    [ -f "$base" ] || cp "$tpl" "$base"
     out="$(mktemp)" || return 1
     while IFS= read -r line || [ -n "$line" ]; do
         case "$line" in

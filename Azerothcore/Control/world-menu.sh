@@ -16,8 +16,6 @@ WORLD_CONF="${WORLD_CONF:-$ACORE_DIR/env/dist/etc/worldserver.conf}"
 PLAYERBOTS_CONF="${PLAYERBOTS_CONF:-$ACORE_DIR/env/dist/etc/modules/playerbots.conf}"
 WORLD_SESSION="${WORLD_SESSION:-world-session}"
 WORLD_SERVICE_NAME="${WORLD_SERVICE_NAME:-azerothcore-world.service}"
-# The daily restart is a long-running scheduler service now, not an OnCalendar
-# timer - normalise whatever control.conf still carries.
 WORLD_TIMER_NAME="azerothcore-world-restart.service"
 RESTART_RUNNER="$SCRIPT_DIR/world-restart-runner.sh"
 
@@ -67,8 +65,6 @@ restart_sched_reload() {
 restart_sched_enable() {
     [ -s "$RESTART_TIMES_CONF" ] || { echo "Add at least one restart time first."; return 1; }
     [ -x "$RESTART_RUNNER" ] || chmod +x "$RESTART_RUNNER" 2>/dev/null
-    # Retire the old OnCalendar timer so it can't fire alongside the new service.
-    sudo systemctl disable --now azerothcore-world-restart.timer 2>/dev/null || true
     sudo tee "/etc/systemd/system/$WORLD_TIMER_NAME" >/dev/null <<EOF
 [Unit]
 Description=AzerothCore worldserver daily restart scheduler
@@ -91,8 +87,6 @@ EOF
 
 restart_sched_disable() {
     sudo systemctl disable --now "$WORLD_TIMER_NAME" 2>/dev/null || true
-    # Retire the old OnCalendar timer from earlier installs.
-    sudo systemctl disable --now azerothcore-world-restart.timer 2>/dev/null || true
     sudo systemctl daemon-reload
     echo "Daily restart scheduler disabled."
 }

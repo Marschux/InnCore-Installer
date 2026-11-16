@@ -214,7 +214,7 @@ install_control_role() {
     # (autostart / restart timer). Without it every such action prompts for a
     # password. Scoped to this role's azerothcore-* units only.
     sudo tee "/etc/sudoers.d/acore-control-$role" >/dev/null <<EOF
-$owner ALL=(root) NOPASSWD: /usr/bin/systemctl daemon-reload, /usr/bin/systemctl reboot, /usr/bin/systemctl * azerothcore-$role.service, /usr/bin/systemctl * azerothcore-$role-restart.timer, /usr/bin/systemctl * azerothcore-$role-restart.service, /usr/bin/tee /etc/systemd/system/azerothcore-$role.service, /usr/bin/tee /etc/systemd/system/azerothcore-$role-restart.timer, /usr/bin/tee /etc/systemd/system/azerothcore-$role-restart.service, /usr/bin/rm -f /etc/systemd/system/azerothcore-$role.service
+$owner ALL=(root) NOPASSWD: /usr/bin/systemctl daemon-reload, /usr/bin/systemctl reboot, /usr/bin/systemctl * azerothcore-$role.service, /usr/bin/systemctl * azerothcore-$role-restart.service, /usr/bin/tee /etc/systemd/system/azerothcore-$role.service, /usr/bin/tee /etc/systemd/system/azerothcore-$role-restart.service, /usr/bin/rm -f /etc/systemd/system/azerothcore-$role.service
 EOF
     sudo chmod 0440 "/etc/sudoers.d/acore-control-$role"
     sudo visudo -cf "/etc/sudoers.d/acore-control-$role" >/dev/null || { warn "sudoers grant invalid - removing."; sudo rm -f "/etc/sudoers.d/acore-control-$role"; }
@@ -347,11 +347,6 @@ strip_existing_mysql_tuning() {
         # it stays. `\` before the literal markers keeps sed from reading the
         # '>>>' as an address.
         sudo sed -i "\\|${MYSQL_TUNING_BEGIN}|,\\|${MYSQL_TUNING_END}|d" "$cnf"
-    elif grep -q "MYSQL PERFORMANCE TUNING - AZEROTHCORE" "$cnf"; then
-        # Pre-marker layout from an earlier version - delete to EOF as before
-        # (that old block was always written last).
-        warn "Existing AzerothCore MySQL tuning (old format) found - replacing it."
-        sudo sed -i '/MYSQL PERFORMANCE TUNING - AZEROTHCORE/,$d' "$cnf"
     fi
 }
 

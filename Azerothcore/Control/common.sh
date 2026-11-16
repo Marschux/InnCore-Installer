@@ -282,23 +282,12 @@ start_via_unit() {   # start_via_unit <process> <session>; 1 = start here yourse
         echo -e "${YELLOW}⚠️  Autostart is off: a box shutdown will not stop ${1} cleanly.${RESET}"
         return 1
     fi
-    upgrade_unit_file "$unit"
     echo -e "${CYAN}🚀  Starting ${1} through ${unit}, so a box shutdown stops it cleanly...${RESET}"
     if ! sudo -n systemctl restart "$unit"; then
         echo -e "${YELLOW}⚠️  systemctl restart ${unit} failed - starting directly.${RESET}"
         return 1
     fi
     console_follow "$2"
-}
-
-# KillMode=none is deprecated (systemd warns on every load and will drop it);
-# process keeps the same effect here: the oneshot's main process is long gone, so
-# nothing is killed and the server's own ExecStop does the stopping.
-upgrade_unit_file() {   # upgrade_unit_file <unit>
-    local f="/etc/systemd/system/$1"
-    grep -q '^KillMode=none$' "$f" 2>/dev/null || return 0
-    sed 's/^KillMode=none$/KillMode=process/' "$f" | sudo -n tee "$f" >/dev/null \
-        && sudo -n systemctl daemon-reload
 }
 
 server_start() {
