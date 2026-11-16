@@ -44,7 +44,25 @@ pull_updates() {
 
 autostart_world() { autostart_toggle "$WORLD_SERVICE_NAME" "AzerothCore Worldserver" "$WORLD_MENU"; }
 
+# Inside the lead time the runner has already queued `server shutdown`; just
+# restarting the runner leaves that running and the server goes down anyway.
+# Cancel it in-game when its slot is no longer next (or with "force").
+restart_cancel_armed() {   # restart_cancel_armed [force]
+    local armed
+    read -r armed < "$RESTART_ARMED" 2>/dev/null || return 0
+    if [ "$armed" -gt "$EPOCHSECONDS" ] 2>/dev/null; then
+        if [ -z "${1:-}" ] && [ "$(restart_next | cut -d';' -f1)" = "$armed" ]; then return 0; fi
+        if has_session "$WORLD_SESSION"; then
+            tmx send-keys -t "$WORLD_SESSION" "server shutdown cancel" Enter
+            tmx send-keys -t "$WORLD_SESSION" "announce Daily restart cancelled." Enter
+            echo "Pending in-game shutdown cancelled."
+        fi
+    fi
+    rm -f "$RESTART_ARMED"
+}
+
 restart_sched_reload() {
+    restart_cancel_armed
     if systemctl is-active --quiet "$WORLD_TIMER_NAME" 2>/dev/null; then
         sudo systemctl restart "$WORLD_TIMER_NAME" && echo "Scheduler reloaded with the new schedule."
     fi
@@ -74,6 +92,7 @@ EOF
 
 restart_sched_disable() {
     sudo systemctl disable --now "$WORLD_TIMER_NAME" 2>/dev/null || true
+    restart_cancel_armed force
     sudo systemctl daemon-reload
     echo "Daily restart scheduler disabled."
 }
@@ -128,10 +147,14 @@ restart_timer() {
                else echo "Invalid time."; fi
                sleep 1 ;;
             3) read -rp "Date YYYY-MM-DD: " d; read -rp "Time HH:MM (blank = whole day): " t
-               if date -d "$d" >/dev/null 2>&1; then
+               # Store the normalised date: restart_is_skipped compares strings,
+               # so "tomorrow" or "1.12." would be saved but never match.
+               if ! d="$(date -d "$d" +%F 2>/dev/null)"; then echo "Invalid date."
+               elif [ -n "$t" ] && ! [[ "$t" =~ ^([01][0-9]|2[0-3]):[0-5][0-9]$ ]]; then echo "Invalid time."
+               else
                    [ -n "$t" ] && echo "${d};${t}" >> "$s" || echo "$d" >> "$s"
-                   sort -u -o "$s" "$s"; echo "Skip added."; restart_sched_reload
-               else echo "Invalid date."; fi
+                   sort -u -o "$s" "$s"; echo "Skip added: $d${t:+ $t}"; restart_sched_reload
+               fi
                sleep 1 ;;
             4) read -rp "Line to un-skip (YYYY-MM-DD or YYYY-MM-DD;HH:MM): " d
                drop_lines "$s" -xF "$d"

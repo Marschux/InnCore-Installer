@@ -231,9 +231,11 @@ wait_for_login_db() {   # wait_for_login_db [max_seconds]
 }
 
 # mysql as the user of any *DatabaseInfo line; conf as in read_db_info.
+# --connect-timeout: the auth menu's realm header queries from the render path;
+# an unreachable DB host would otherwise hang it for the full TCP timeout.
 mysql_db() {   # mysql_db <Key> <conf-or-empty> [mysql args...]
     read_db_info "$1" "$2" || { echo "Could not read $1."; return 1; }
-    MYSQL_PWD="$DB_PASS" mysql -h "$DB_HOST" -P "$DB_PORT" -u "$DB_USER" "$DB_NAME" "${@:3}"
+    MYSQL_PWD="$DB_PASS" mysql --connect-timeout=5 -h "$DB_HOST" -P "$DB_PORT" -u "$DB_USER" "$DB_NAME" "${@:3}"
 }
 mysql_auth() { mysql_db LoginDatabaseInfo "" "$@"; }
 
@@ -342,6 +344,8 @@ if [ -z "${RESTART_TIMES_CONF:-}" ]; then
 fi
 RESTART_TIMES_CONF="${RESTART_TIMES_CONF:-${SCRIPT_DIR:-.}/restart_times.conf}"
 RESTART_SKIP_CONF="${RESTART_SKIP_CONF:-${SCRIPT_DIR:-.}/restart_skip.conf}"
+# Epoch of the slot whose `server shutdown` the runner has already sent.
+RESTART_ARMED="${SCRIPT_DIR:-.}/.restart-armed"
 
 restart_is_skipped() {   # restart_is_skipped <YYYY-MM-DD> <HH:MM>
     local d="$1" t="$2" ed et

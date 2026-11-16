@@ -26,7 +26,7 @@ MAGENTA='\033[1;35m'   # the rest of the palette comes from common.sh
 # write: ask_yes "Do it?" || return 0
 ask_yes() {   # ask_yes <question> [cancel-message]
     local a
-    read -p "❓ $1 (y/n): " a
+    read -rp "❓ $1 (y/n): " a
     [[ "$a" =~ ^[JjYy]$ ]] && return 0
     echo -e "${YELLOW}👋 ${2:-Operation cancelled.}${NC}"
     return 1
@@ -35,7 +35,7 @@ ask_yes() {   # ask_yes <question> [cancel-message]
 # Prompt with a default into <var>; "num" also rejects non-integers.
 ask_field() {   # ask_field <var> <label> <default> [num]
     local _v
-    read -p "🔹 $2 [$3]: " _v
+    read -rp "🔹 $2 [$3]: " _v
     printf -v "$1" '%s' "${_v:-$3}"
     [ -z "${4:-}" ] || validate_number "${!1}" "$2"
 }
@@ -113,9 +113,9 @@ PYTHON
 read_password_srp6() {   # read_password_srp6 <username>
     local p1 p2
     check_python3 || return 1
-    read -s -p "🔒  Password: " p1; echo ""
+    read -rsp "🔒  Password: " p1; echo ""
     [ -n "$p1" ] || { echo -e "${RED}❌ Password must not be empty.${NC}"; return 1; }
-    read -s -p "🔒  Repeat password: " p2; echo ""
+    read -rsp "🔒  Repeat password: " p2; echo ""
     [ "$p1" = "$p2" ] || { echo -e "${RED}❌ Passwords do not match.${NC}"; return 1; }
     read -r SRP_SALT SRP_VERIFIER <<< "$(calculate_srp6 "$1" "$p1")"
     [ -n "$SRP_SALT" ] && [ -n "$SRP_VERIFIER" ] || { echo -e "${RED}❌ SRP6 calculation failed.${NC}"; return 1; }
@@ -178,7 +178,7 @@ add_account() {
         return 1
     fi
 
-    read -p "🔹  Account name: " acc_name
+    read -rp "🔹  Account name: " acc_name
 
     if [ -z "$acc_name" ]; then
         echo -e "${RED}❌ Account name must not be empty.${NC}"
@@ -246,7 +246,7 @@ prompt_account() {   # prompt_account <title>
     echo ""
     db_line
     echo ""
-    read -p "🔹  Account name or account ID: " search
+    read -rp "🔹  Account name or account ID: " search
     [ -n "$search" ] || { echo -e "${RED}❌ Input must not be empty.${NC}"; return 1; }
     load_account "$search"
 }
@@ -302,7 +302,7 @@ change_username() {
     local new_name new_name_escaped
 
     echo ""
-    read -p "🔹  New account name: " new_name
+    read -rp "🔹  New account name: " new_name
 
     if [ -z "$new_name" ]; then
         echo -e "${RED}❌ Name must not be empty.${NC}"
@@ -353,7 +353,7 @@ edit_account() {
         echo -e "  ${CYAN}[0]${NC} ↩️  Back"
         echo ""
 
-        read -p "Select option [0]: " OPTION
+        read -rp "Select option [0]: " OPTION
         OPTION=${OPTION:-0}
 
         case "$OPTION" in
@@ -435,7 +435,7 @@ set_gm_level_flow() {
     echo "  4 = Console (not for accounts; DB/manual only)"
     echo ""
 
-    read -p "🔹  New GM level [0-3]: " gm_level
+    read -rp "🔹  New GM level [0-3]: " gm_level
 
     if [[ ! "$gm_level" =~ ^[0-3]$ ]]; then
         echo -e "${RED}❌ Invalid GM level. Allowed values: 0, 1, 2, 3.${NC}"
@@ -446,7 +446,7 @@ set_gm_level_flow() {
     show_realms
     echo ""
 
-    read -p "🔹  Realm ID [-1]: " realm_id
+    read -rp "🔹  Realm ID [-1]: " realm_id
     realm_id=${realm_id:--1}
     validate_realm_id "$realm_id" || return 1
 
@@ -674,7 +674,7 @@ while true; do
     echo -e "  ${CYAN}[0]${NC}  ↩️  Back"
     echo "--------------------------------------------------"
 
-    read -p "Select option [0]: " OPTION
+    read -rp "Select option [0]: " OPTION
     OPTION=${OPTION:-0}
 
     case "$OPTION" in
@@ -911,7 +911,7 @@ delete_realm() {
 
     echo ""
     echo -e "${RED}🔥  DELETE REALM${NC}"
-    read -p "🔹 Realm ID to delete: " delete_id
+    read -rp "🔹 Realm ID to delete: " delete_id
 
     validate_number "$delete_id" "Realm ID" || return 1
 
@@ -950,7 +950,7 @@ realmlist_menu() {
         echo -e "  ${CYAN}[3]${NC} Show realmlist table"
         echo -e "  ${CYAN}[0]${NC} Back"
         echo "--------------------------------------------------"
-        read -p "Select option [0]: " option
+        read -rp "Select option [0]: " option
         option=${option:-0}
 
         case "$option" in
@@ -1111,7 +1111,7 @@ edit_motd() {
     show_realms cancel
 
     echo ""
-    read -p "🔹  Realm ID [-1]: " realm_id
+    read -rp "🔹  Realm ID [-1]: " realm_id
     realm_id=${realm_id:--1}
 
     if [ "$realm_id" = "0" ]; then
@@ -1129,7 +1129,7 @@ edit_motd() {
     echo -e "  ${CYAN}[1]${NC} Manual multiline input"
     echo -e "  ${CYAN}[2]${NC} Edit with $EDITOR"
     echo "--------------------------------------------------"
-    read -p "Select option [2]: " input_mode
+    read -rp "Select option [2]: " input_mode
     input_mode=${input_mode:-2}
 
     case "$input_mode" in
@@ -1168,7 +1168,7 @@ delete_motd() {
     list_motds
     echo ""
 
-    read -p "🔹  Realm ID to delete MOTD from (0 = cancel): " realm_id
+    read -rp "🔹  Realm ID to delete MOTD from (0 = cancel): " realm_id
 
     if [ "$realm_id" = "0" ]; then
         echo -e "${YELLOW}👋 Operation cancelled.${NC}"
@@ -1207,7 +1207,7 @@ motd_menu() {
         echo -e "  ${CYAN}[0]${NC} Back"
         echo "--------------------------------------------------"
 
-        read -p "Select option [0]: " OPTION
+        read -rp "Select option [0]: " OPTION
         OPTION=${OPTION:-0}
 
         case "$OPTION" in
@@ -1236,7 +1236,7 @@ while true; do
     echo -e "  ${CYAN}[2]${NC} MOTD"
     echo -e "  ${CYAN}[0]${NC} Back"
     echo "--------------------------------------------------"
-    read -p "Select option [0]: " TOP_OPTION
+    read -rp "Select option [0]: " TOP_OPTION
     TOP_OPTION=${TOP_OPTION:-0}
 
     case "$TOP_OPTION" in

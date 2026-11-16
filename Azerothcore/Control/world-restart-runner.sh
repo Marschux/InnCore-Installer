@@ -35,6 +35,7 @@ if has_session "$SESSION"; then
     tmx send-keys -t "$SESSION" "saveall" Enter
     sleep 1
     tmx send-keys -t "$SESSION" "server shutdown ${lead_s}" Enter
+    echo "$target" > "$RESTART_ARMED"   # lets the menu cancel it if the slot is skipped
     log "Warned players, queued 'server shutdown ${lead_s}'."
 else
     log "No worldserver session - will still reboot at the target time."
