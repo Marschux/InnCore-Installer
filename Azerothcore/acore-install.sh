@@ -790,6 +790,7 @@ run_server() {   # run_server auth|world
     write_conf_db_password "$etc/${role}server.conf"
     if [ "$role" = world ]; then
         write_conf_login_db "$etc/worldserver.conf"
+        echo -e "\nAllowTwoSide.WhoList = 1" >> "$etc/worldserver.conf"
         cp "$etc/modules/playerbots.conf.dist" "$etc/modules/playerbots.conf"
         write_conf_db_password "$etc/modules/playerbots.conf"   # PlayerbotsDatabaseInfo
     fi
